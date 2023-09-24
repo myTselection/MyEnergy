@@ -21,6 +21,8 @@ from .utils import *
 _LOGGER = logging.getLogger(__name__)
 
 
+
+
 def create_schema(entry, option=False):
     """Create a default schema based on if a option or if settings
     is already filled out.
@@ -28,47 +30,78 @@ def create_schema(entry, option=False):
     if option:
         # We use .get here incase some of the texts gets changed.
         default_postalcode = entry.data.get("postalcode", "")
-        default_day_electricity_consumption = entry.data.get("day_electricity_consumption", "")
-        default_night_electricity_consumption = entry.data.get("night_electricity_consumption", "")
-        default_excl_night_electricity_consumption = entry.data.get("excl_night_electricity_consumption", "")
+        default_electricity_digital_counter = entry.data.get("electricity_digital_counter", False)
+        default_day_electricity_consumption = entry.data.get("day_electricity_consumption", 0)
+        default_night_electricity_consumption = entry.data.get("night_electricity_consumption", 0)
+        default_excl_night_electricity_consumption = entry.data.get("excl_night_electricity_consumption", 0)
+        default_electricity_injection = entry.data.get("electricity_injection", 0)
         default_gas_consumption = entry.data.get("gas_consumption", "")
-        default_directdebit_invoice = entry.data.get("directdebit_invoice", "")
-        default_email_invoice = entry.data.get("email_invoice", "")
-        default_online_support = entry.data.get("online_support", "")
+        default_directdebit_invoice = entry.data.get("directdebit_invoice", False)
+        default_email_invoice = entry.data.get("email_invoice", False)
+        default_online_support = entry.data.get("online_support", False)
+        default_electric_car = entry.data.get("electric_car", False)
     else:
         default_postalcode = ""
-        default_day_electricity_consumption = ""
-        default_night_electricity_consumption = ""
-        default_excl_night_electricity_consumption = ""
+        default_electricity_digital_counter = False
+        default_day_electricity_consumption = 0
+        default_night_electricity_consumption = 0
+        default_excl_night_electricity_consumption = 0
+        default_electricity_injection = 0
         default_gas_consumption = ""
         default_directdebit_invoice = True
         default_email_invoice = True
         default_online_support = True
+        default_electric_car = False
 
     data_schema = OrderedDict()
     data_schema[
         vol.Required("postalcode", description="postalcode")
     ] = str
     data_schema[
-        vol.Required("day_electricity_consumption", description="day_electricity_consumption")
-    ] = str
-    data_schema[
-        vol.Required("night_electricity_consumption", description="night_electricity_consumption")
-    ] = str
-    data_schema[
-        vol.Required("excl_night_electricity_consumption", description="excl_night_electricity_consumption")
-    ] = str
-    data_schema[
-        vol.Required("gas_consumption", description="gas_consumption")
-    ] = str
-    data_schema[
-        vol.Required("directdebit_invoice", description="directdebit_invoice")
+        vol.Required("electricity_digital_counter", default=default_electricity_digital_counter, description="electricity_digital_counter")
     ] = bool
     data_schema[
-        vol.Required("email_invoice", description="email_invoice")
+        vol.Optional("day_electricity_consumption", description="day_electricity_consumption")
+    ] = int
+    data_schema[
+        vol.Optional("night_electricity_consumption", description="night_electricity_consumption")
+    ] = int
+    data_schema[
+        vol.Optional("excl_night_electricity_consumption", description="excl_night_electricity_consumption")
+    ] = int
+    data_schema[
+        vol.Optional("electricity_injection", description="electricity_injection")
+    ] = int
+    data_schema[
+        vol.Required("electric_car", default=default_electric_car, description="electric_car")
+    ] = bool
+    # data_schema[
+    #     vol.Required("electricity_provider", description="electricity_provider")
+    # ] = selector({
+    #             "select": {
+    #                 "options": electricity_provider.keys(),
+    #                 "mode": "dropdown"
+    #             }
+    #         })
+    data_schema[
+        vol.Optional("gas_consumption", description="gas_consumption")
+    ] = int
+    # data_schema[
+    #     vol.Required("gas_provider", description="gas_provider")
+    # ] = selector({
+    #             "select": {
+    #                 "options": gas_providers.keys(),
+    #                 "mode": "dropdown"
+    #             }
+    #         })
+    data_schema[
+        vol.Required("directdebit_invoice", default=default_directdebit_invoice, description="directdebit_invoice")
     ] = bool
     data_schema[
-        vol.Required("online_support", description="online_support")
+        vol.Required("email_invoice", default=default_email_invoice, description="email_invoice")
+    ] = bool
+    data_schema[
+        vol.Required("online_support", default=default_online_support, description="online_support")
     ] = bool
 
     return data_schema

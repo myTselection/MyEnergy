@@ -26,8 +26,14 @@ _DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S.0%z"
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
-        vol.Required(CONF_USERNAME): cv.string,
-        vol.Required(CONF_PASSWORD): cv.string
+        vol.Required("postalcode"): cv.string,
+        vol.Optional("day_electricity_consumption"): cv.string,
+        vol.Optional("night_electricity_consumption"): cv.int,
+        vol.Optional("excl_night_electricity_consumption"): cv.int,
+        vol.Optional("gas_consumption"): cv.int,
+        vol.Required("directdebit_invoice"): cv.bool,
+        vol.Required("email_invoice"): cv.bool,
+        vol.Required("online_support"): cv.bool
     }
 )
 
@@ -101,13 +107,22 @@ class ComponentData:
         self._config = config
         self._hass = hass
         self._session = ComponentSession()
-        self._cardnumber = config.get(CONF_USERNAME)
-        self._password = config.get(CONF_PASSWORD)
+        self._postalcode = config.get("postalcode")
+        self._electricity_digital_counter = config.get("electricity_digital_counter")
+        self._day_electricity_consumption = config.get("day_electricity_consumption",0)
+        self._night_electricity_consumption = config.get("night_electricity_consumption", 0)
+        self._excl_night_electricity_consumption = config.get("excl_night_electricity_consumption", 0)
+        self._electricity_injection = config.get("electricity_injection", 0)
+        self._electric_car = config.get("electric_car", False)
+        self._gas_consumption = config.get("gas_consumption", 0)
+        self._directdebit_invoice = config.get("directdebit_invoice", True)
+        self._email_invoice = config.get("email_invoice", True)
+        self._online_support = config.get("online_support", True)
         self._details = None
 
     @property
     def unique_id(self):
-        return f"{DOMAIN}-{self._cardnumber}"
+        return f"{DOMAIN}-{self._postalcode}-{self._day_electricity_consumption}-{self._night_electricity_consumption}-{self._gas_consumption}"
 
     # same as update, but without throttle to make sure init is always executed
     async def _forced_update(self):
@@ -116,12 +131,9 @@ class ComponentData:
             self._session = ComponentSession()
 
         if self._session:
-            _LOGGER.debug("Starting with session for " + NAME)
-            self._details = await self._hass.async_add_executor_job(lambda: self._session.login(self._cardnumber, self._password))
-            _LOGGER.debug("login completed " + NAME)
-            self._transactions = await self._hass.async_add_executor_job(lambda: self._session.transactions())
-            _LOGGER.debug(f"transactions completed {NAME}, transactions: {self._transactions}")
-
+            _LOGGER.debug("Getting date for " + NAME)
+            self._details = await self._hass.async_add_executor_job(lambda: self._session.get_data(self._config))
+            _LOGGER.debug("Data fetched completed " + NAME)
         else:
             _LOGGER.debug(f"{NAME} no session available")
 

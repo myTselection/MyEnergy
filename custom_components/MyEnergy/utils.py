@@ -11,14 +11,17 @@ _LOGGER = logging.getLogger(__name__)
 
 _DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S.0%z"
 
+gas_providers = {"No provider": "0","Social rate": "1000", "Aspiravi": "30", "Bolt": "29","DATS 24": "33", "Ebem": "13", "Ecopower": "14", "Elegant":"12", "Eneco": "15",
+                 "Energie.be": "35", "Engie": "5", "Fluvius": "37", "Frank Energie": "41","Luminus": "9", "Mega": "21", "Octa+":  "19", "Tina":  "38", "TotalEnergies": "8", 
+                 "Trevion": "3", "Wase Wind": "16", 'Wind voor "A"': "36", "Other": "1"}
+
+electricity_providers = {"No provider": "0","Social rate": "1000", "Aspiravi": "30", "Bolt": "29","DATS 24": "33", "Ebem": "13", "Ecopower": "14", "Elegant":"12", "Eneco": "15",
+                 "Energie.be": "35", "Engie": "5", "Fluvius": "37", "Frank Energie": "41","Luminus": "9", "Mega": "21", "Octa+":  "19", "Tina":  "38", "TotalEnergies": "8", 
+                 "Trevion": "3", "Wase Wind": "16", 'Wind voor "A"': "36", "Other": "1"}
 
 def check_settings(config, hass):
-    if not any(config.get(i) for i in ["username"]):
-        _LOGGER.error("cardnumber was not set")
-    else:
-        return True
-    if not config.get("password"):
-        _LOGGER.error("password was not set")
+    if not any(config.get(i) for i in ["postalcode"]):
+        _LOGGER.error("postalcode was not set")
     else:
         return True
     raise vol.Invalid("Missing settings to setup the sensor.")
@@ -30,68 +33,54 @@ class ComponentSession(object):
         self.s.headers["User-Agent"] = "Python/3"
         self.s.headers["Accept-Language"] = "en-US,en;q=0.9"
 
-    def login(self, cardnumber, password):
-        response = self.s.get("https://services.totalenergies.be/nl/inloggen-op-uw-club-account",timeout=30,allow_redirects=True)
+    def get_data(self, config):
+        postalcode = config.get("postalcode")
+        electricity_digital_counter = config.get("electricity_digital_counter")
+        day_electricity_consumption = config.get("day_electricity_consumption",0)
+        night_electricity_consumption = config.get("night_electricity_consumption", 0)
+        excl_night_electricity_consumption = config.get("excl_night_electricity_consumption", 0)
+        electricity_injection = config.get("electricity_injection", 0)
+        electric_car = config.get("electric_car", False)
         
-        data = {
-            "noCarte": cardnumber,
-            "code": password,
-            "p_LG": "NL",
-            "p_PAYS": "BE",
-            "menucourant": "adherent",
-            "codeCategorie": ""
-        }
-        _LOGGER.debug(f"post data: {data}")
-        response = self.s.post("https://club.totalenergies.be/authentification/authentification.php?PAYS=BE&LG=NL",data=data,timeout=30,allow_redirects=False)
-        _LOGGER.debug("post result status code: " + str(response.status_code))
-        _LOGGER.debug("post result response: " + str(response.text))
-        _LOGGER.debug("post result cookies: " + str(self.s.cookies))
-        
-        clubCookie = self.s.cookies.get('club')
-        clubCookie = urllib.parse.unquote(clubCookie)
-        print(f"clubCookie: {clubCookie}")
-        tab_valeurs = clubCookie.split(':')
-        # Example nom: NAME, prenom: FIRSTNALE, email name@gmail.com, noEmetteur , noCarte , dtFinAssistance dd/mm/yyyy, phraseAssistance 0, points 999
-        details = {
-            "connect" : tab_valeurs[0],
-            "lastname":  tab_valeurs[1],
-            "firstname": tab_valeurs[2],
-            "email" :tab_valeurs[3],
-            "noEmetteur" : tab_valeurs[4],
-            "noCarte" : tab_valeurs[5],
-            "dtFinAssistance" : tab_valeurs[6],
-            "phraseAssistance" : tab_valeurs[7],
-            "points" : tab_valeurs[8],
-            "last_update": datetime.now()
-        }
-        return details
+        gas_consumption = config.get("gas_consumption", 0)
 
-    def transactions(self):
-        response = self.s.get("https://club.totalenergies.be/adherent_transactions/transactions.php?PAYS=BE&LG=NL",timeout=30,allow_redirects=True)
+        directdebit_invoice = config.get("directdebit_invoice", True)
+        email_invoice = config.get("email_invoice", True)
+        online_support = config.get("online_support", True)
+
+        electricity_comp = day_electricity_consumption != 0 or night_electricity_consumption != 0 or excl_night_electricity_consumption != 0
+        gas_comp = gas_consumption != 0
+
+        if electricity_comp and gas_comp:
+            comp = "elektriciteit-en-aardgas"
+        elif electricity_comp: 
+            comp = "elektriciteit"
+        elif gas_comp:
+            comp = "aardgas"
+        else:
+            comp = "elektriciteit-en-aardgas"
+    
+        elec_level = 0
+        if night_electricity_consumption != 0:
+            elec_level += 1
+        if excl_night_electricity_consumption !=0:
+            elec_level += 1
+
+        directdebit_invoice_n = 1 if directdebit_invoice == True else 0
+        email_invoice_n = 1 if email_invoice == True else 0
+        online_support_n = 1 if online_support == True else 0
+        electricity_digital_counter_n = 1 if electricity_digital_counter == True else 0
+        electric_car_n = 1 if electric_car == True else 0
+
+        myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={comp}&d={electricity_digital_counter_n}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C1-{electricity_injection}%7C%7C%7C%7C%7C%7C%7C%7C%7C%7C%7C%7C%21%7C%7C%7C%7C-{electric_car_n}%7C0-0"
+
+        response = self.s.get(myenergy_url,timeout=30,allow_redirects=True)
         
         _LOGGER.debug("get result status code: " + str(response.status_code))
         _LOGGER.debug("get result response: " + str(response.text))
-        _LOGGER.debug("get result cookies: " + str(self.s.cookies))
-        
         soup = BeautifulSoup(response.text, 'html.parser')
+        
+        details = response.text
+        return details
 
-        transactions = []
-        table = soup.find('table')
-        rows = table.find_all('tr')
-
-        for row in rows:
-            columns = row.find_all('td')
-            if len(columns) == 4 and len(columns[0].contents) >= 2:
-                transaction = {
-                    'date': columns[0].contents[0],
-                    'station': columns[0].contents[2],
-                    'subject': columns[1].text.strip(),
-                    'debit': int(columns[2].text.strip()),
-                    'credit': int(columns[3].text.strip())
-                }
-                transactions.append(transaction)
-
-        # result = {'transactions': transactions}
-        # print(json_data = json.dumps(transactions, indent=4))
-        return transactions
         
