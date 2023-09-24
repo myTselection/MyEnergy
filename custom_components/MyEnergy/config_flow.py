@@ -27,19 +27,49 @@ def create_schema(entry, option=False):
     """
     if option:
         # We use .get here incase some of the texts gets changed.
-        default_username = entry.data.get(CONF_USERNAME, "")
-        default_password = entry.data.get(CONF_PASSWORD, "")
+        default_postalcode = entry.data.get("postalcode", "")
+        default_day_electricity_consumption = entry.data.get("day_electricity_consumption", "")
+        default_night_electricity_consumption = entry.data.get("night_electricity_consumption", "")
+        default_excl_night_electricity_consumption = entry.data.get("excl_night_electricity_consumption", "")
+        default_gas_consumption = entry.data.get("gas_consumption", "")
+        default_directdebit_invoice = entry.data.get("directdebit_invoice", "")
+        default_email_invoice = entry.data.get("email_invoice", "")
+        default_online_support = entry.data.get("online_support", "")
     else:
-        default_username = ""
-        default_password = ""
+        default_postalcode = ""
+        default_day_electricity_consumption = ""
+        default_night_electricity_consumption = ""
+        default_excl_night_electricity_consumption = ""
+        default_gas_consumption = ""
+        default_directdebit_invoice = True
+        default_email_invoice = True
+        default_online_support = True
 
     data_schema = OrderedDict()
     data_schema[
-        vol.Required(CONF_USERNAME, description="username")
+        vol.Required("postalcode", description="postalcode")
     ] = str
     data_schema[
-        vol.Required(CONF_PASSWORD, description="password")
+        vol.Required("day_electricity_consumption", description="day_electricity_consumption")
     ] = str
+    data_schema[
+        vol.Required("night_electricity_consumption", description="night_electricity_consumption")
+    ] = str
+    data_schema[
+        vol.Required("excl_night_electricity_consumption", description="excl_night_electricity_consumption")
+    ] = str
+    data_schema[
+        vol.Required("gas_consumption", description="gas_consumption")
+    ] = str
+    data_schema[
+        vol.Required("directdebit_invoice", description="directdebit_invoice")
+    ] = bool
+    data_schema[
+        vol.Required("email_invoice", description="email_invoice")
+    ] = bool
+    data_schema[
+        vol.Required("online_support", description="online_support")
+    ] = bool
 
     return data_schema
 
@@ -77,11 +107,11 @@ class ComponentFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """
         return self.async_create_entry(title="configuration.yaml", data={})
 
-    # @staticmethod
-    # @callback
-    # def async_get_options_flow(config_entry):  # TODO
-    #     """Get the options flow for this handler."""
-    #     return ComponentOptionsHandler(config_entry)
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):  # TODO
+        """Get the options flow for this handler."""
+        return ComponentOptionsHandler(config_entry)
 
 
 
