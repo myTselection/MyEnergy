@@ -1,0 +1,13 @@
+{
+  "domain": "myenergy",
+  "name": "MyEnergy",
+  "codeowners": ["@myTselection"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/myTselection/MyEnergy",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/myTselection/MyEnergy/issues",
+  "requirements": ["bs4","requests"],
+  "version": "0.0.1"
+}
