@@ -52,9 +52,16 @@ class ComponentSession(object):
         contract_type = "V"
         combine_elec_and_gas = False
         combine_elec_and_gas_n = 1 if combine_elec_and_gas == True else 0
+        electricity_digital_counter = True
+        electric_car = True
+        electricity_digital_counter_n = 1 if electricity_digital_counter == True else 0
+        electric_car_n = 1 if electric_car == True else 0
+        electricity_electricity_injection = True
+        electricity_injection_n = 1 if electricity_electricity_injection == True else 0
 
-
-        myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={comp}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C0-%7C%7C%7C%7C0%21{contract_type}%21A%21n%7C0%21{contract_type}%21A%7C{combine_elec_and_gas_n}%7C%7C%7C%7C%7C%7C%21%7C%7C%7C%7C-0%7C0-0"
+        # myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={comp}&d={electricity_digital_counter_n}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C1-{electricity_injection_n}%7C%7C%7C%7C0%21{contract_type}%21A%21n%7C0%21{contract_type}%21A%7C{combine_elec_and_gas_n}%7C%7C%7C%7C%7C%7C%21%7C%7C%7C%7C-{electric_car_n}%7C0-0"
+        # myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={comp}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C0-%7C%7C%7C%7C0%21{contract_type}%21A%21n%7C0%21{contract_type}%21A%7C{combine_elec_and_gas_n}%7C%7C%7C%7C%7C%7C%21%7C%7C%7C%7C-0%7C0-0"
+        myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={comp}&d={electricity_digital_counter_n}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C1-{electricity_injection_n}%7C%7C%7C%7C0%21{contract_type}%21A%21n%7C0%21{contract_type}%21A%7C{combine_elec_and_gas_n}%7C%7C%7C%7C%7C%7C%21%7C%7C%7C%7C-{electric_car_n}%7C0-0"
         _LOGGER.debug(f"myenergy_url: {myenergy_url}")
         response = self.s.get(myenergy_url,timeout=30,allow_redirects=True)
         

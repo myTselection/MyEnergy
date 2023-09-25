@@ -40,37 +40,39 @@ def create_schema(entry, option=False):
         default_email_invoice = entry.data.get("email_invoice", False)
         default_online_support = entry.data.get("online_support", False)
         default_electric_car = entry.data.get("electric_car", False)
+        default_combine_elec_and_gas = entry.data.get("combine_elec_and_gas", False)
     else:
         default_postalcode = ""
         default_electricity_digital_counter = False
-        default_day_electricity_consumption = 0
-        default_night_electricity_consumption = 0
-        default_excl_night_electricity_consumption = 0
-        default_electricity_injection = 0
-        default_gas_consumption = ""
+        default_day_electricity_consumption = None
+        default_night_electricity_consumption = None
+        default_excl_night_electricity_consumption = None
+        default_electricity_injection = None
+        default_gas_consumption = None
         default_directdebit_invoice = True
         default_email_invoice = True
         default_online_support = True
         default_electric_car = False
+        default_combine_elec_and_gas = False
 
     data_schema = OrderedDict()
     data_schema[
-        vol.Required("postalcode", description="postalcode")
+        vol.Required("postalcode", default=default_postalcode, description="postalcode")
     ] = str
     data_schema[
         vol.Required("electricity_digital_counter", default=default_electricity_digital_counter, description="electricity_digital_counter")
     ] = bool
     data_schema[
-        vol.Optional("day_electricity_consumption", description="day_electricity_consumption")
+        vol.Optional("day_electricity_consumption", default=default_day_electricity_consumption, description="day_electricity_consumption")
     ] = int
     data_schema[
-        vol.Optional("night_electricity_consumption", description="night_electricity_consumption")
+        vol.Optional("night_electricity_consumption", default=default_night_electricity_consumption, description="night_electricity_consumption")
     ] = int
     data_schema[
-        vol.Optional("excl_night_electricity_consumption", description="excl_night_electricity_consumption")
+        vol.Optional("excl_night_electricity_consumption", default=default_excl_night_electricity_consumption, description="excl_night_electricity_consumption")
     ] = int
     data_schema[
-        vol.Optional("electricity_injection", description="electricity_injection")
+        vol.Optional("electricity_injection", default=default_electricity_injection, description="electricity_injection")
     ] = int
     data_schema[
         vol.Required("electric_car", default=default_electric_car, description="electric_car")
@@ -84,7 +86,7 @@ def create_schema(entry, option=False):
     #             }
     #         })
     data_schema[
-        vol.Optional("gas_consumption", description="gas_consumption")
+        vol.Optional("gas_consumption", default=default_gas_consumption, description="gas_consumption")
     ] = int
     # data_schema[
     #     vol.Required("gas_provider", description="gas_provider")
@@ -94,6 +96,9 @@ def create_schema(entry, option=False):
     #                 "mode": "dropdown"
     #             }
     #         })
+    data_schema[
+        vol.Required("combine_elec_and_gas", default=default_combine_elec_and_gas, description="combine_elec_and_gas")
+    ] = bool      
     data_schema[
         vol.Required("directdebit_invoice", default=default_directdebit_invoice, description="directdebit_invoice")
     ] = bool
@@ -106,6 +111,8 @@ def create_schema(entry, option=False):
 
     return data_schema
 
+          
+        
 
 class ComponentFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for component."""
