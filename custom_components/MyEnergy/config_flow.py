@@ -34,7 +34,10 @@ def create_schema(entry, option=False):
         default_day_electricity_consumption = entry.data.get("day_electricity_consumption", 0)
         default_night_electricity_consumption = entry.data.get("night_electricity_consumption", 0)
         default_excl_night_electricity_consumption = entry.data.get("excl_night_electricity_consumption", 0)
+        default_solar_panels = entry.data.get("solar_panels", False)
+        default_inverter_power = entry.data.get("inverter_power", 0)
         default_electricity_injection = entry.data.get("electricity_injection", 0)
+        default_electricity_injection_night = entry.data.get("electricity_injection_night", 0)
         default_gas_consumption = entry.data.get("gas_consumption", "")
         default_directdebit_invoice = entry.data.get("directdebit_invoice", False)
         default_email_invoice = entry.data.get("email_invoice", False)
@@ -47,7 +50,10 @@ def create_schema(entry, option=False):
         default_day_electricity_consumption = 0
         default_night_electricity_consumption = 0
         default_excl_night_electricity_consumption = 0
+        default_solar_panels = False
+        default_inverter_power = 0
         default_electricity_injection = 0
+        default_electricity_injection_night = 0
         default_gas_consumption = 0
         default_directdebit_invoice = True
         default_email_invoice = True
@@ -72,7 +78,16 @@ def create_schema(entry, option=False):
         vol.Optional("excl_night_electricity_consumption", default=default_excl_night_electricity_consumption, description="excl_night_electricity_consumption")
     ] = int
     data_schema[
+        vol.Required("solar_panels", default=default_solar_panels, description="solar_panels")
+    ] = bool
+    data_schema[
         vol.Optional("electricity_injection", default=default_electricity_injection, description="electricity_injection")
+    ] = int
+    data_schema[
+        vol.Optional("electricity_injection_night", default=default_electricity_injection_night, description="electricity_injection_night")
+    ] = int
+    data_schema[
+        vol.Optional("inverter_power", default=default_inverter_power, description="inverter_power")
     ] = int
     data_schema[
         vol.Required("electric_car", default=default_electric_car, description="electric_car")

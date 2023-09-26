@@ -147,7 +147,7 @@ class ComponentData:
 
     @property
     def unique_id(self):
-        return f"{DOMAIN}-{self._postalcode}-{self._day_electricity_consumption}-{self._night_electricity_consumption}-{self._gas_consumption}"
+        return f"{DOMAIN}-{self._postalcode}"
 
     # same as update, but without throttle to make sure init is always executed
     async def _forced_update(self):
@@ -247,7 +247,7 @@ class ComponentSensor(Entity):
     @property
     def unique_id(self) -> str:
         """Return the unique ID of the sensor."""
-        return f"{self._data.unique_id}-{self._postalcode}-{self._fuel_type.fullnameEN}-{self._contract_type.fullname}"
+        return f"{self._data.unique_id}-{self._fuel_type.fullnameEN}-{self._contract_type.fullname}"
 
     @property
     def name(self) -> str:

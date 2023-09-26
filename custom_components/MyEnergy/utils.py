@@ -55,20 +55,33 @@ class ComponentSession(object):
 
     def get_data(self, config, contract_type: ContractType):
         postalcode = config.get("postalcode")
-        electricity_digital_counter = config.get("electricity_digital_counter")
+        electricity_digital_counter = config.get("electricity_digital_counter", False)
+        electricity_digital_counter_n = 1 if electricity_digital_counter == True else 0
         day_electricity_consumption = config.get("day_electricity_consumption",0)
         night_electricity_consumption = config.get("night_electricity_consumption", 0)
         excl_night_electricity_consumption = config.get("excl_night_electricity_consumption", 0)
-        electricity_injection = config.get("electricity_injection", 0)
 
-        combine_elec_and_gas = config.get("combine_elec_and_gas", False)        
+        solar_panels = config.get("solar_panels", False)
+        solar_panels_n = 1 if solar_panels == True else 0
+        electricity_injection = config.get("electricity_injection", 0)
+        electricity_injection_night = config.get("electricity_injection_night", 0)
+
+        inverter_power = config.get("inverter_power", 0)
+        inverter_power = str(inverter_power).replace(',','%2C').replace('.','%2C')
+
+        combine_elec_and_gas = config.get("combine_elec_and_gas", False)     
+        combine_elec_and_gas_n = 1 if combine_elec_and_gas == True else 0   
         
         gas_consumption = config.get("gas_consumption", 0)
 
         directdebit_invoice = config.get("directdebit_invoice", True)
+        directdebit_invoice_n = 1 if directdebit_invoice == True else 0
         email_invoice = config.get("email_invoice", True)
+        email_invoice_n = 1 if email_invoice == True else 0
         online_support = config.get("online_support", True)
+        online_support_n = 1 if online_support == True else 0
         electric_car = config.get("electric_car", False)
+        electric_car_n = 1 if electric_car == True else 0
 
         electricity_comp = day_electricity_consumption != 0 or night_electricity_consumption != 0 or excl_night_electricity_consumption != 0
         gas_comp = gas_consumption != 0
@@ -88,16 +101,7 @@ class ComponentSession(object):
         if excl_night_electricity_consumption !=0:
             elec_level += 1
 
-        directdebit_invoice_n = 1 if directdebit_invoice == True else 0
-        email_invoice_n = 1 if email_invoice == True else 0
-        online_support_n = 1 if online_support == True else 0
-        electricity_digital_counter_n = 1 if electricity_digital_counter == True else 0
-        electric_car_n = 1 if electric_car == True else 0
-        electricity_injection_n = 1 if electricity_injection == True else 0
-
-        combine_elec_and_gas_n = 1 if combine_elec_and_gas == True else 0
-
-        myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={comp}&d={electricity_digital_counter_n}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C1-{electricity_injection_n}%7C%7C%7C%7C0%21{contract_type.code}%21A%21n%7C0%21{contract_type.code}%21A%7C{combine_elec_and_gas_n}%7C%7C%7C%7C%7C%7C%21%7C%7C%7C%7C-{electric_car_n}%7C0-0"
+        myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={comp}&d={electricity_digital_counter_n}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C1-{electricity_injection}%7C{electricity_injection_night}%7C{solar_panels_n}%7C%7C0%21{contract_type.code}%21A%21n%7C0%21{contract_type.code}%21A%7C{combine_elec_and_gas_n}%7C{inverter_power}%7C%7C%7C%7C%7C%21%7C%7C{inverter_power}%7C%7C{electric_car_n}-0%7C0-0"
         
         _LOGGER.debug(f"myenergy_url: {myenergy_url}")
         response = self.s.get(myenergy_url,timeout=30,allow_redirects=True)
