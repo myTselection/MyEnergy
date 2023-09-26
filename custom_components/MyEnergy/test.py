@@ -83,7 +83,11 @@ class ComponentSession(object):
         # sections = soup.find_all('div', class_='container-fluid container-fluid-custom')
         # for section in sections:
         
-        section_ids = ["RestultatElec", "RestultatGas"]
+        section_ids = []
+        if electricity_comp:
+            section_ids.append("RestultatElec")
+        if gas_comp:
+            section_ids.append("RestultatGas")
         if combine_elec_and_gas:
             section_ids = ["RestultatDualFuel"]
         for section_id in section_ids:
@@ -96,6 +100,8 @@ class ComponentSession(object):
             for providerdetail in providerdetails:
                 providerdetails_name = providerdetail.find('div', class_='product_details__header').text
                 providerdetails_name = providerdetails_name.replace('\n', '')
+                # productdetails = section.find_all('div', class_='product_details__options')
+                # for productdetail in productdetails:
 
 
                 # Find all table rows and extract the data
@@ -108,7 +114,7 @@ class ComponentSession(object):
                 headings= ["Energiekosten", "Nettarieven en heffingen", "Promo via Mijnenergie"]
                 heading_index = 0
                 # Loop through the rows and extract the data into a dictionary
-                for row in table_rows:
+                for row in table_rows[:-1]:
                     columns = row.find_all(['th', 'td'])
                     row_data = []
                     for column in columns:
@@ -117,21 +123,24 @@ class ComponentSession(object):
                             row_data.append(data.replace("\xa0", "").replace("+ ", ""))
                     if len(row_data) > 0:
                         json_item = {}
-                        if len(row_data) == 1:
+                        if len(row_data) == 1 and heading_index <= (len(headings)-1) and row_data[0] != headings[heading_index] :
                             json_item[headings[heading_index]] = row_data[0]
                             heading_index += 1
-                            heading_index = min(heading_index,len(headings)-1)
                         else:
                             json_item[row_data[0]] = row_data[1:]
                         json_data.append(json_item)
                     table_data.append(row_data)
                 providerdetails_json[providerdetails_name]= json_data
+                #only first restult is needed, if all details are required, remove the break below
+                break
+                # #only first restult is needed, if all details are required, remove the break below
+                # break
             result[sectionName] = providerdetails_json
         return result
 
         
-config = {"postalcode": 1040, "day_electricity_consumption":658, "night_electricity_consumption": 744, 
-          "excl_night_electricity_consumption": 855,"gas_consumption": 15000,"directdebit_invoice": False,"email_invoice": False,"online_support": False}
+config = {"postalcode": 1652, "day_electricity_consumption":658, "night_electricity_consumption": 0, 
+          "excl_night_electricity_consumption": 0,"gas_consumption": 15000,"directdebit_invoice": False,"email_invoice": False,"online_support": False}
 cs = ComponentSession()
 details = cs.get_data(config)
 # print(details)

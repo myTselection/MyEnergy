@@ -19,7 +19,7 @@ gas_providers = {"No provider": "0","Social rate": "1000", "Aspiravi": "30", "Bo
 electricity_providers = {"No provider": "0","Social rate": "1000", "Aspiravi": "30", "Bolt": "29","DATS 24": "33", "Ebem": "13", "Ecopower": "14", "Elegant":"12", "Eneco": "15",
                  "Energie.be": "35", "Engie": "5", "Fluvius": "37", "Frank Energie": "41","Luminus": "9", "Mega": "21", "Octa+":  "19", "Tina":  "38", "TotalEnergies": "8", 
                  "Trevion": "3", "Wase Wind": "16", 'Wind voor "A"': "36", "Other": "1"}
-
+headings= ["Energiekosten", "Nettarieven en heffingen", "Promo via Mijnenergie"]
 
 class FuelType(Enum):
     GAS = ("G","Aardgas","Gas")
@@ -101,6 +101,7 @@ class ComponentSession(object):
         
         _LOGGER.debug(f"myenergy_url: {myenergy_url}")
         response = self.s.get(myenergy_url,timeout=30,allow_redirects=True)
+        assert response.status_code == 200
         
         _LOGGER.debug("get result status code: " + str(response.status_code))
         # _LOGGER.debug("get result response: " + str(response.text))
@@ -112,11 +113,18 @@ class ComponentSession(object):
         # sections = soup.find_all('div', class_='container-fluid container-fluid-custom')
         # for section in sections:
         
-        section_ids = ["RestultatElec", "RestultatGas"]
+        section_ids = []
+        if electricity_comp:
+            section_ids.append("RestultatElec")
+        if gas_comp:
+            section_ids.append("RestultatGas")
         if combine_elec_and_gas:
             section_ids = ["RestultatDualFuel"]
         for section_id in section_ids:
+            _LOGGER.debug(f"section_id {section_id}")
             section =  soup.find(id=section_id)
+            # if section == None:
+                # continue
 
             sectionName = section.find("caption", class_="sr-only").text
             # providerdetails = section.find_all('tr', class_='cleantable_overview_row')
@@ -136,7 +144,6 @@ class ComponentSession(object):
                 json_data['name'] = providerdetails_name
                 json_data['url'] = myenergy_url
 
-                headings= ["Energiekosten", "Nettarieven en heffingen", "Promo via Mijnenergie"]
                 heading_index = 0
                 # Loop through the rows and extract the data into a dictionary
                 for row in table_rows:
@@ -147,11 +154,9 @@ class ComponentSession(object):
                         if data != "":
                             row_data.append(data.replace("\xa0", "").replace("+ ", "").replace("â‚¬","€"))
                     if len(row_data) > 0:
-                        if len(row_data) == 1 and row_data[0] != headings[heading_index]:
-                            if json_data.get(headings[heading_index]) == None:
-                                json_data[headings[heading_index]] = row_data[0]
+                        if len(row_data) == 1 and heading_index <= (len(headings)-1) and row_data[0] != headings[heading_index] and '€' in row_data[0] and 'korting' not in row_data[0] and 'promo' not in row_data[0] and len(row_data[0]) < 10:
+                            json_data[headings[heading_index]] = row_data[0]
                             heading_index += 1
-                            heading_index = min(heading_index,len(headings)-1)
                         else:
                             json_data[row_data[0]] = row_data[1:]
                     # table_data.append(row_data)

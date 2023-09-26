@@ -47,6 +47,14 @@ MIN_TIME_BETWEEN_UPDATES = timedelta(hours=1)
 async def dry_setup(hass, config_entry, async_add_devices):
     config = config_entry
     postalcode = config.get("postalcode")
+    
+    day_electricity_consumption = config.get("day_electricity_consumption",0)
+    night_electricity_consumption = config.get("night_electricity_consumption", 0)
+    excl_night_electricity_consumption = config.get("excl_night_electricity_consumption", 0)
+    electricity_injection = config.get("electricity_injection", 0)
+    gas_consumption = config.get("gas_consumption", 0)
+    
+    combine_elec_and_gas = config.get("combine_elec_and_gas", False)    
 
     check_settings(config, hass)
     sensors = []
@@ -58,15 +66,23 @@ async def dry_setup(hass, config_entry, async_add_devices):
     await componentData._forced_update()
     assert componentData._details is not None
 
-    sensorGasFixed = ComponentSensor(componentData, postalcode, FuelType.GAS,ContractType.FIXED)
-    sensors.append(sensorGasFixed)
-    sensorGasVariable = ComponentSensor(componentData, postalcode, FuelType.GAS,ContractType.VARIABLE)
-    sensors.append(sensorGasVariable)
-    sensorElecFixed = ComponentSensor(componentData, postalcode, FuelType.ELECTRICITY,ContractType.FIXED)
-    sensors.append(sensorElecFixed)
-    sensorElecVariable = ComponentSensor(componentData, postalcode, FuelType.ELECTRICITY,ContractType.VARIABLE)
-    sensors.append(sensorElecVariable)
+    
+    electricity_comp = day_electricity_consumption != 0 or night_electricity_consumption != 0 or excl_night_electricity_consumption != 0
+    gas_comp = gas_consumption != 0
+
+    
     #TODO: support for combined type instead of split gas/elec
+
+    if gas_comp:
+        sensorGasFixed = ComponentSensor(componentData, postalcode, FuelType.GAS,ContractType.FIXED)
+        sensors.append(sensorGasFixed)
+        sensorGasVariable = ComponentSensor(componentData, postalcode, FuelType.GAS,ContractType.VARIABLE)
+        sensors.append(sensorGasVariable)
+    if electricity_comp:
+        sensorElecFixed = ComponentSensor(componentData, postalcode, FuelType.ELECTRICITY,ContractType.FIXED)
+        sensors.append(sensorElecFixed)
+        sensorElecVariable = ComponentSensor(componentData, postalcode, FuelType.ELECTRICITY,ContractType.VARIABLE)
+        sensors.append(sensorElecVariable)
 
     async_add_devices(sensors)
 
@@ -142,7 +158,7 @@ class ComponentData:
         self._last_update = datetime.now()
         for contract_type in ContractType:
             if self._session:
-                _LOGGER.debug("Getting date for " + NAME)
+                _LOGGER.debug("Getting data for " + NAME)
                 self._details[contract_type.code] = await self._hass.async_add_executor_job(lambda: self._session.get_data(self._config, contract_type))
                 _LOGGER.debug("Data fetched completed " + NAME)
             else:
@@ -168,12 +184,17 @@ class ComponentSensor(Entity):
         self._details = data._details
         self._last_update =  self._data._last_update
         self._price = None
+        self._priceyear = None
+        self._kWhyear = None
         self._fuel_type = fuel_type
         self._contract_type = contract_type
         self._postalcode = postalcode
         self._providerdetails = None
         self._url  = None
         self._providername = None
+        self._energycost = None
+        self._netrate = None
+        self._promo = None
 
     @property
     def state(self):
@@ -191,18 +212,26 @@ class ComponentSensor(Entity):
                 fueltype_detail = self._contract_type_details.get(fueltype_name)
                 _LOGGER.debug(f"fueltype_detail: {self._contract_type} - {fueltype_name} - {fueltype_detail}")
                 self._providerdetails = fueltype_detail[0]
-                price_info = self._providerdetails.get('Jaarlijkse kostprijs',[])
                 self._url = self._providerdetails.get('url',"")
                 self._providername = self._providerdetails.get('name',"")
+                
+                self._energycost = self._providerdetails.get(headings[0],"")
+                self._netrate = self._providerdetails.get(headings[1],"")
+                self._promo = self._providerdetails.get(headings[2],"")
+                price_info = self._providerdetails.get('Jaarlijkse kostprijs',[])
                 if len(price_info) > 0:
                     self._price = price_info[0]
                     self._price = self._price.replace('câ‚¬/kWh','').replace('c€/kWh','')
+                    if len(price_info) >= 2:
+                        self._kWhyear = price_info[1]
+                        self._priceyear = price_info[2]
+                        self._priceyear = self._priceyear.replace('câ‚¬/kWh','').replace('c€/kWh','')
 
 
     async def async_will_remove_from_hass(self):
         """Clean up after entity before removal."""
         _LOGGER.info("async_will_remove_from_hass " + NAME)
-        self._details.clear_session()
+        self._data.clear_session()
 
     @property
     def icon(self) -> str:
@@ -232,7 +261,12 @@ class ComponentSensor(Entity):
             "fuel_type": self._fuel_type.fullnameEN,
             "contract_type": self._contract_type.fullname,
             "url": self._url,
-            "name": self._providername
+            "name": self._providername,
+            "energycost": self._energycost,
+            "netrate": self._netrate,
+            "promo": self._promo,
+            "total price per year": self._priceyear,
+            "total kWh per year": self._kWhyear
         }
 
     @property

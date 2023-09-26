@@ -44,11 +44,11 @@ def create_schema(entry, option=False):
     else:
         default_postalcode = ""
         default_electricity_digital_counter = False
-        default_day_electricity_consumption = None
-        default_night_electricity_consumption = None
-        default_excl_night_electricity_consumption = None
-        default_electricity_injection = None
-        default_gas_consumption = None
+        default_day_electricity_consumption = 0
+        default_night_electricity_consumption = 0
+        default_excl_night_electricity_consumption = 0
+        default_electricity_injection = 0
+        default_gas_consumption = 0
         default_directdebit_invoice = True
         default_email_invoice = True
         default_online_support = True
@@ -149,7 +149,7 @@ class ComponentFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry):  # TODO
+    def async_get_options_flow(config_entry):
         """Get the options flow for this handler."""
         return ComponentOptionsHandler(config_entry)
 
@@ -178,4 +178,4 @@ class ComponentOptionsHandler(config_entries.ConfigFlow):
             self.hass.config_entries.async_update_entry(
                 self.config_entry, data=user_input
             )
-            return self.async_create_entry(title="", data={})
+            return self.async_create_entry(title=NAME, data=user_input)

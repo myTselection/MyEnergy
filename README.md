@@ -6,7 +6,7 @@
 [![GitHub last commit](https://img.shields.io/github/last-commit/myTselection/MyEnergy.svg)](https://github.com/myTselection/MyEnergy/commits/master)
 [![GitHub commit activity](https://img.shields.io/github/commit-activity/m/myTselection/MyEnergy.svg)](https://github.com/myTselection/MyEnergy/graphs/commit-activity)
 
-# DRAFT !!! UNDER CONSTRUCTION !! My Energy - MijnEnergie.be Home Assistant integration
+# BETA! My Energy - MijnEnergie.be Home Assistant integration
 [Mijn Energie](https://www.mijnenergie.be/) Home Assistant custom component integration for Belgium. This custom component has been built from the ground up to bring MijnEnergie.be site data into Home Assistant sensors in order to follow up energy electricty and gas prices. This integration is built against the public website provided by MijnEnergie.be for Belgium and has not been tested for any other countries.
 
 This integration is in no way affiliated with MijnEnergie.
@@ -22,12 +22,12 @@ This integration is in no way affiliated with MijnEnergie.
 
 
 ## Integration
-Device `MyEnergy [username]` should become available with the following sensors:
-- <details><summary><code>MyEnergy [username]</code> with details </summary>
+Device `MyEnergy` should become available with the following sensors:
+- <details><summary><code>MyEnergy [postalcode] [FuelType] [ContractType]</code> with details </summary>
 
 	| Attribute | Description |
 	| --------- | ----------- |
-	| State     |  |
+	| State     | cost in c€ per kWh  |
 	|           | TODO |
 	|           | TODO |
 	
