@@ -170,7 +170,7 @@ class ComponentData:
 
     async def update(self):
         # force update if (some) values are still unknown
-        if self._details is None:
+        if self._details is None or self._details is {}:
             await self._forced_update()
         else:
             await self._update()
@@ -192,6 +192,7 @@ class ComponentSensor(Entity):
         self._providerdetails = None
         self._url  = None
         self._providername = None
+        self._contractname = None
         self._energycost = None
         self._netrate = None
         self._promo = None
@@ -213,7 +214,9 @@ class ComponentSensor(Entity):
                 _LOGGER.debug(f"fueltype_detail: {self._contract_type} - {fueltype_name} - {fueltype_detail}")
                 self._providerdetails = fueltype_detail[0]
                 self._url = self._providerdetails.get('url',"")
-                self._providername = self._providerdetails.get('name',"")
+                self._providername = self._providerdetails.get('provider',"")
+                self._contractname = self._providerdetails.get('name',"")
+
                 
                 self._energycost = self._providerdetails.get(headings[0],"")
                 self._netrate = self._providerdetails.get(headings[1],"")
@@ -258,11 +261,12 @@ class ComponentSensor(Entity):
             ATTR_ATTRIBUTION: NAME,
             "last update": self._last_update,
             "postalcode": self._postalcode,
-            "fuel_type": self._fuel_type.fullnameEN,
-            "contract_type": self._contract_type.fullname,
+            "fuel type": self._fuel_type.fullnameEN,
+            "contract type": self._contract_type.fullname,
             "url": self._url,
-            "name": self._providername,
-            "energycost": self._energycost,
+            "provider name": self._providername,
+            "contract name": self._contractname,
+            "energy cost": self._energycost,
             "netrate": self._netrate,
             "promo": self._promo,
             "total price per year": self._priceyear,

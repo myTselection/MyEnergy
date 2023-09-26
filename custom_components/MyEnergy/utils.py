@@ -134,6 +134,13 @@ class ComponentSession(object):
                 providerdetails_name = providerdetail.find('div', class_='product_details__header').text
                 providerdetails_name = providerdetails_name.replace('\n', '')
 
+                # Find the <img> element within the specified <div> by class name
+                img_element = providerdetail.find('div', class_='provider-logo-md').find('img')
+
+                # Extract the 'alt' attribute, which contains the provider name
+                provider_name = img_element['alt']
+                provider_name = provider_name.replace('Logo ','').title()
+
 
                 # Find all table rows and extract the data
                 table_rows = providerdetail.find_all('tr')
@@ -143,6 +150,7 @@ class ComponentSession(object):
                 json_data = {}
                 json_data['name'] = providerdetails_name
                 json_data['url'] = myenergy_url
+                json_data['provider'] = provider_name
 
                 heading_index = 0
                 # Loop through the rows and extract the data into a dictionary
