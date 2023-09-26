@@ -48,7 +48,7 @@ If you would encounter some issues with this custom component, you can enable ex
 logger:
   default: info
   logs:
-     custom_components.MyEnergy: debug
+     custom_components.myenergy: debug
 ```
 
 ## Example usage
