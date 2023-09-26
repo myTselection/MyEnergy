@@ -28,8 +28,17 @@ Device `MyEnergy` should become available with the following sensors:
 	| Attribute | Description |
 	| --------- | ----------- |
 	| State     | cost in c€ per kWh  |
-	|           | TODO |
-	|           | TODO |
+	| Last update   | Timestamp of last data refresh, throttled to limit data fetch to 1h |
+	| Postalcode    | Postalcode used to retrieve the prices |
+	| Fuel type     | Fuel type (Electricity or Gas) used to retrieve the prices |
+	| Contract type | Contract type (Fixed or Variable) used to retrieve the prices |
+	| Url           | Full url that was used to retrieve the data, throught this url, full details can be seen and contract can be requested |
+	| Name          | Name of the cheapest subscription for which a match was found |
+	| Energycost    | Energycost (provider dependent part of subscription cost) of the cheapest subscription for which a match was found |
+	| Netrate       | Netrate  (fixed part of subscription cost) of the cheapest subscription for which a match was found |
+	| Promo         | Promo (provider dependent promotion, part of subscription cost) of the cheapest subscription for which a match was found |
+	| Total price per year    | Total price per year of the cheapest subscription for which a match was found |
+	| Total kWh per year      | Total kWh per year on wich the lookup is based (total combination of day/night/... consumptions) |
 	
 	</details>
 
@@ -44,20 +53,73 @@ The main logic and API connection related code can be found within source code M
 All other files just contain boilerplat code for the integration to work wtihin HA or to have some constants/strings/translations.
 
 If you would encounter some issues with this custom component, you can enable extra debug logging by adding below into your `configuration.yaml`:
+<details><summary>Click to show example</summary>
+	
 ```
 logger:
   default: info
   logs:
      custom_components.myenergy: debug
 ```
+</details>
 
-## Example usage
-
-<details><summary>Click to show the Mardown example</summary>
-
+## Statistics
+In order to keep long term statistics, you could create statistics sensors such as example below (I'm still experimenting with best config):
+in `configuration.yaml`:
+<details><summary>Click to show example</summary>
+	
 ```
-type: markdown
-  content: >-
-    {{states('sensor.myenergy_[username]')}}  
+sensor: 
+  - platform: statistics
+    name: "MyEnergy Electricity Fixed statistics"
+    entity_id: sensor.myenergy_[postalcode]_electricty_fixed
+    state_characteristic: average_linear
+    sampling_size: 20
+    max_age:
+      hours: 24
+  - platform: statistics
+    name: "MyEnergy Electricity Variable statistics"
+    entity_id: sensor.myenergy_[postalcode]_electricty_variable
+    state_characteristic: average_linear
+    sampling_size: 20
+    max_age:
+      hours: 24
+  - platform: statistics
+    name: "MyEnergy Gas Fixed statistics"
+    entity_id: sensor.myenergy_[postalcode]_gas_fixed
+    state_characteristic: average_linear
+    sampling_size: 20
+    max_age:
+      hours: 24
+  - platform: statistics
+    name: "MyEnergy Gas Variable statistics"
+    entity_id: sensor.myenergy_[postalcode]_gas_variable
+    state_characteristic: average_linear
+    sampling_size: 20
+    max_age:
+      hours: 24
+```
+</details>
+
+### Statistics Graph
+Based on these statistics sensors that will become available after HA rebooted, you can add a Statistics Graph.
+<details><summary>Click to show example</summary>
+
+
+Dashboard:
+```
+      - chart_type: line
+        period: month
+        type: statistics-graph
+        entities:
+          - sensor.myenergy_electricity_fixed_statistics
+          - sensor.myenergy_electricity_variable_statistics
+          - sensor.myenergy_gas_fixed_statistics
+          - sensor.myenergy_gas_variable_statistics
+        stat_types:
+          - mean
+          - min
+          - max
+        title: Mijn Energie
 ```
 </details>
