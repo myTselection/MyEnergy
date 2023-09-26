@@ -40,8 +40,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     }
 )
 
-# MIN_TIME_BETWEEN_UPDATES = timedelta(hours=1)
-MIN_TIME_BETWEEN_UPDATES = timedelta(minutes=1)
+MIN_TIME_BETWEEN_UPDATES = timedelta(hours=1)
+# MIN_TIME_BETWEEN_UPDATES = timedelta(minutes=5)
 
 
 async def dry_setup(hass, config_entry, async_add_devices):
@@ -143,7 +143,7 @@ class ComponentData:
         for contract_type in ContractType:
             if self._session:
                 _LOGGER.debug("Getting date for " + NAME)
-                self._details[contract_type.value] = await self._hass.async_add_executor_job(lambda: self._session.get_data(self._config, contract_type))
+                self._details[contract_type.code] = await self._hass.async_add_executor_job(lambda: self._session.get_data(self._config, contract_type))
                 _LOGGER.debug("Data fetched completed " + NAME)
             else:
                 _LOGGER.debug(f"{NAME} no session available")
@@ -167,10 +167,13 @@ class ComponentSensor(Entity):
         self._data = data
         self._details = data._details
         self._last_update =  self._data._last_update
-        self._price = 0
-        self._fuel_type = fuel_type.value
-        self._contract_type = contract_type.value
+        self._price = None
+        self._fuel_type = fuel_type
+        self._contract_type = contract_type
         self._postalcode = postalcode
+        self._providerdetails = None
+        self._url  = None
+        self._providername = None
 
     @property
     def state(self):
@@ -181,11 +184,20 @@ class ComponentSensor(Entity):
         await self._data.update()
         self._details = self._data._details
         self._last_update =  self._data._last_update
-        self._contract_type_details = self._details.get(self._contract_type)
-        _LOGGER.debug(f"self._contract_type_details: {self._contract_type_details}")
+        self._contract_type_details = self._details.get(self._contract_type.code)
+        # _LOGGER.debug(f"self._contract_type_details: {self._contract_type_details}")
+        for fueltype_name in self._contract_type_details.keys():
+            if self._fuel_type.fullnameNL in fueltype_name:
+                fueltype_detail = self._contract_type_details.get(fueltype_name)
+                _LOGGER.debug(f"fueltype_detail: {self._contract_type} - {fueltype_name} - {fueltype_detail}")
+                self._providerdetails = fueltype_detail[0]
+                price_info = self._providerdetails.get('Jaarlijkse kostprijs',[])
+                self._url = self._providerdetails.get('url',"")
+                self._providername = self._providerdetails.get('name',"")
+                if len(price_info) > 0:
+                    self._price = price_info[0]
+                    self._price = self._price.replace('câ‚¬/kWh','').replace('c€/kWh','')
 
-        #TODO get price for correct type
-        self._price = 0
 
     async def async_will_remove_from_hass(self):
         """Clean up after entity before removal."""
@@ -195,7 +207,7 @@ class ComponentSensor(Entity):
     @property
     def icon(self) -> str:
         """Shows the correct icon for container."""
-        if self._fuel_type == "G":
+        if self._fuel_type == FuelType.GAS:
             return "mdi:meter-gas"
         else:
             return "mdi:transmission-tower"
@@ -203,12 +215,12 @@ class ComponentSensor(Entity):
     @property
     def unique_id(self) -> str:
         """Return the unique ID of the sensor."""
-        return f"{self._data.unique_id}-{self._postalcode}-{self._fuel_type}-{self._contract_type}"
+        return f"{self._data.unique_id}-{self._postalcode}-{self._fuel_type.fullnameEN}-{self._contract_type.fullname}"
 
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return f"{NAME} {self._postalcode} {self._fuel_type} {self._contract_type}"
+        return f"{NAME} {self._postalcode} {self._fuel_type.fullnameEN} {self._contract_type.fullname}"
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -217,8 +229,10 @@ class ComponentSensor(Entity):
             ATTR_ATTRIBUTION: NAME,
             "last update": self._last_update,
             "postalcode": self._postalcode,
-            "fuel_type": self._fuel_type,
-            "contract_type": self._contract_type
+            "fuel_type": self._fuel_type.fullnameEN,
+            "contract_type": self._contract_type.fullname,
+            "url": self._url,
+            "name": self._providername
         }
 
     @property

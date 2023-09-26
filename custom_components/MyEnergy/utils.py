@@ -22,19 +22,22 @@ electricity_providers = {"No provider": "0","Social rate": "1000", "Aspiravi": "
 
 
 class FuelType(Enum):
-    GAS = ("G")
-    ELECTRICITY = ("E")
-    COMBINED = ("C")
+    GAS = ("G","Aardgas","Gas")
+    ELECTRICITY = ("E","Elektriciteit","Electricty")
+    COMBINED = ("C","Elektriciteit en aardgas","Electricity and Gas")
     
-    def __init__(self, code):
+    def __init__(self, code,fullnameNL, fullnameEN):
         self.code = code
+        self.fullnameNL = fullnameNL
+        self.fullnameEN = fullnameEN
 
 class ContractType(Enum):
-    FIXED = ("F")
-    VARIABLE = ("V")
+    FIXED = ("F","Fixed")
+    VARIABLE = ("V","Variable")
     
-    def __init__(self, code):
+    def __init__(self, code,fullname):
         self.code = code
+        self.fullname = fullname
 
 def check_settings(config, hass):
     if not any(config.get(i) for i in ["postalcode"]):
@@ -94,9 +97,9 @@ class ComponentSession(object):
 
         combine_elec_and_gas_n = 1 if combine_elec_and_gas == True else 0
 
-        myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={comp}&d={electricity_digital_counter_n}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C1-{electricity_injection_n}%7C%7C%7C%7C0%21{contract_type.value}%21A%21n%7C0%21{contract_type.value}%21A%7C{combine_elec_and_gas_n}%7C%7C%7C%7C%7C%7C%21%7C%7C%7C%7C-{electric_car_n}%7C0-0"
+        myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={comp}&d={electricity_digital_counter_n}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C1-{electricity_injection_n}%7C%7C%7C%7C0%21{contract_type.code}%21A%21n%7C0%21{contract_type.code}%21A%7C{combine_elec_and_gas_n}%7C%7C%7C%7C%7C%7C%21%7C%7C%7C%7C-{electric_car_n}%7C0-0"
         
-       
+        _LOGGER.debug(f"myenergy_url: {myenergy_url}")
         response = self.s.get(myenergy_url,timeout=30,allow_redirects=True)
         
         _LOGGER.debug("get result status code: " + str(response.status_code))
@@ -118,7 +121,7 @@ class ComponentSession(object):
             sectionName = section.find("caption", class_="sr-only").text
             # providerdetails = section.find_all('tr', class_='cleantable_overview_row')
             providerdetails = section.find_all('div', class_='product_details')
-            providerdetails_json = {}
+            providerdetails_array = []
             for providerdetail in providerdetails:
                 providerdetails_name = providerdetail.find('div', class_='product_details__header').text
                 providerdetails_name = providerdetails_name.replace('\n', '')
@@ -128,8 +131,10 @@ class ComponentSession(object):
                 table_rows = providerdetail.find_all('tr')
 
                 # Create a list to store the table data
-                table_data = []
-                json_data = []
+                # table_data = []
+                json_data = {}
+                json_data['name'] = providerdetails_name
+                json_data['url'] = myenergy_url
 
                 headings= ["Energiekosten", "Nettarieven en heffingen", "Promo via Mijnenergie"]
                 heading_index = 0
@@ -140,19 +145,21 @@ class ComponentSession(object):
                     for column in columns:
                         data = column.get_text().strip()
                         if data != "":
-                            row_data.append(data.replace("\xa0", "").replace("+ ", ""))
+                            row_data.append(data.replace("\xa0", "").replace("+ ", "").replace("â‚¬","€"))
                     if len(row_data) > 0:
-                        json_item = {}
-                        if len(row_data) == 1:
-                            json_item[headings[heading_index]] = row_data[0]
+                        if len(row_data) == 1 and row_data[0] != headings[heading_index]:
+                            if json_data.get(headings[heading_index]) == None:
+                                json_data[headings[heading_index]] = row_data[0]
                             heading_index += 1
                             heading_index = min(heading_index,len(headings)-1)
                         else:
-                            json_item[row_data[0]] = row_data[1:]
-                        json_data.append(json_item)
-                    table_data.append(row_data)
-                providerdetails_json[providerdetails_name]= json_data
-            result[sectionName] = providerdetails_json
+                            json_data[row_data[0]] = row_data[1:]
+                    # table_data.append(row_data)
+                heading_index = 0
+                providerdetails_array.append(json_data)
+                #only first restult is needed, if all details are required, remove the break below
+                break
+            result[sectionName] = providerdetails_array
         return result
 
         
