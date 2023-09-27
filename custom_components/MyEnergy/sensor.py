@@ -144,6 +144,7 @@ class ComponentData:
         self._online_support = config.get("online_support", True)
         self._details = {}
         self._last_update = None
+        self._refresh_required = True
 
     @property
     def unique_id(self):
@@ -159,7 +160,11 @@ class ComponentData:
         for contract_type in ContractType:
             if self._session:
                 _LOGGER.debug("Getting data for " + NAME)
-                self._details[contract_type.code] = await self._hass.async_add_executor_job(lambda: self._session.get_data(self._config, contract_type))
+                try:
+                    self._details[contract_type.code] = await self._hass.async_add_executor_job(lambda: self._session.get_data(self._config, contract_type))
+                    self._refresh_required = False
+                except:
+                    self._refresh_required = True
                 _LOGGER.debug("Data fetched completed " + NAME)
             else:
                 _LOGGER.debug(f"{NAME} no session available")
@@ -170,7 +175,7 @@ class ComponentData:
 
     async def update(self):
         # force update if (some) values are still unknown
-        if self._details is None or self._details is {}:
+        if self._details is None or self._details is {} or self._refresh_required:
             await self._forced_update()
         else:
             await self._update()
@@ -225,6 +230,7 @@ class ComponentSensor(Entity):
                 if len(price_info) > 0:
                     self._price = price_info[0]
                     self._price = self._price.replace('câ‚¬/kWh','').replace('c€/kWh','')
+                    self._price = float(self._price.replace(',', '.'))/100
                     if len(price_info) >= 2:
                         self._kWhyear = price_info[1]
                         self._priceyear = price_info[2]
@@ -290,7 +296,7 @@ class ComponentSensor(Entity):
     @property
     def unit_of_measurement(self) -> str:
         """Return the unit of measurement this sensor expresses itself in."""
-        return "c€/kWh"
+        return "€/kWh"
 
     @property
     def device_class(self):

@@ -27,7 +27,7 @@ Device `MyEnergy` should become available with the following sensors:
 
 	| Attribute | Description |
 	| --------- | ----------- |
-	| State     | cost in c€ per kWh  |
+	| State     | cost in € per kWh  |
 	| Last update   | Timestamp of last data refresh, throttled to limit data fetch to 1h |
 	| Postalcode    | Postalcode used to retrieve the prices |
 	| Fuel type     | Fuel type (Electricity or Gas) used to retrieve the prices |
