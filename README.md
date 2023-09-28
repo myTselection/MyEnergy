@@ -33,7 +33,8 @@ Device `MyEnergy` should become available with the following sensors:
 	| Fuel type     | Fuel type (Electricity or Gas) used to retrieve the prices |
 	| Contract type | Contract type (Fixed or Variable) used to retrieve the prices |
 	| Url           | Full url that was used to retrieve the data, throught this url, full details can be seen and contract can be requested |
-	| Name          | Name of the cheapest subscription for which a match was found |
+ | Provider Name | Name of the provider of the cheapest subscription for which a match was found |
+	| Contract Name | Name of the cheapest subscription for which a match was found |
 	| Energycost    | Energycost (provider dependent part of subscription cost) of the cheapest subscription for which a match was found |
 	| Netrate       | Netrate  (fixed part of subscription cost) of the cheapest subscription for which a match was found |
 	| Promo         | Promo (provider dependent promotion, part of subscription cost) of the cheapest subscription for which a match was found |
