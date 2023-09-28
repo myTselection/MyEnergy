@@ -22,6 +22,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 
+provider_names = list(providers.keys())
 
 def create_schema(entry, option=False):
     """Create a default schema based on if a option or if settings
@@ -44,6 +45,8 @@ def create_schema(entry, option=False):
         default_online_support = entry.data.get("online_support", False)
         default_electric_car = entry.data.get("electric_car", False)
         default_combine_elec_and_gas = entry.data.get("combine_elec_and_gas", False)
+        default_electricity_provider = entry.data.get("electricity_provider", "No provider")
+        default_gas_provider = entry.data.get("gas_provider", "No provider")
     else:
         default_postalcode = ""
         default_electricity_digital_counter = False
@@ -60,13 +63,27 @@ def create_schema(entry, option=False):
         default_online_support = True
         default_electric_car = False
         default_combine_elec_and_gas = False
+        default_electricity_provider = "No provider"
+        default_gas_provider = "No provider"
 
+    # _LOGGER.debug(f'provider_names: {provider_names}')
     data_schema = OrderedDict()
     data_schema[
         vol.Required("postalcode", default=default_postalcode, description="postalcode")
     ] = str
     data_schema[
+        vol.Required("electricity_provider", default=default_electricity_provider, description="electricity_provider")
+    ] = selector({
+                "select": {
+                    "options": provider_names,
+                    "mode": "dropdown"
+                }
+            })
+    data_schema[
         vol.Required("electricity_digital_counter", default=default_electricity_digital_counter, description="electricity_digital_counter")
+    ] = bool
+    data_schema[
+        vol.Required("electric_car", default=default_electric_car, description="electric_car")
     ] = bool
     data_schema[
         vol.Optional("day_electricity_consumption", default=default_day_electricity_consumption, description="day_electricity_consumption")
@@ -90,27 +107,16 @@ def create_schema(entry, option=False):
         vol.Optional("inverter_power", default=default_inverter_power, description="inverter_power")
     ] = int
     data_schema[
-        vol.Required("electric_car", default=default_electric_car, description="electric_car")
-    ] = bool
-    # data_schema[
-    #     vol.Required("electricity_provider", description="electricity_provider")
-    # ] = selector({
-    #             "select": {
-    #                 "options": electricity_provider.keys(),
-    #                 "mode": "dropdown"
-    #             }
-    #         })
+        vol.Required("gas_provider", default=default_gas_provider, description="gas_provider")
+    ] = selector({
+                "select": {
+                    "options": provider_names,
+                    "mode": "dropdown"
+                }
+            })
     data_schema[
         vol.Optional("gas_consumption", default=default_gas_consumption, description="gas_consumption")
     ] = int
-    # data_schema[
-    #     vol.Required("gas_provider", description="gas_provider")
-    # ] = selector({
-    #             "select": {
-    #                 "options": gas_providers.keys(),
-    #                 "mode": "dropdown"
-    #             }
-    #         })
     data_schema[
         vol.Required("combine_elec_and_gas", default=default_combine_elec_and_gas, description="combine_elec_and_gas")
     ] = bool      

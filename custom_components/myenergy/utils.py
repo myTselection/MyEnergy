@@ -6,19 +6,18 @@ from datetime import datetime
 import urllib.parse
 from enum import Enum
 
+
 import voluptuous as vol
 
 _LOGGER = logging.getLogger(__name__)
 
 _DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S.0%z"
 
-gas_providers = {"No provider": "0","Social rate": "1000", "Aspiravi": "30", "Bolt": "29","DATS 24": "33", "Ebem": "13", "Ecopower": "14", "Elegant":"12", "Eneco": "15",
+
+providers = {"No provider": "0","Social rate": "1000", "Aspiravi": "30", "Bolt": "29","Brusol": 34, "Cociter": 31, "DATS 24": "33", "Ebem": "13", "Ecopower": "14", "Elegant":"12", "Eneco": "15",
                  "Energie.be": "35", "Engie": "5", "Fluvius": "37", "Frank Energie": "41","Luminus": "9", "Mega": "21", "Octa+":  "19", "Tina":  "38", "TotalEnergies": "8", 
                  "Trevion": "3", "Wase Wind": "16", 'Wind voor "A"': "36", "Other": "1"}
 
-electricity_providers = {"No provider": "0","Social rate": "1000", "Aspiravi": "30", "Bolt": "29","DATS 24": "33", "Ebem": "13", "Ecopower": "14", "Elegant":"12", "Eneco": "15",
-                 "Energie.be": "35", "Engie": "5", "Fluvius": "37", "Frank Energie": "41","Luminus": "9", "Mega": "21", "Octa+":  "19", "Tina":  "38", "TotalEnergies": "8", 
-                 "Trevion": "3", "Wase Wind": "16", 'Wind voor "A"': "36", "Other": "1"}
 headings= ["Energiekosten", "Nettarieven en heffingen", "Promo via Mijnenergie"]
 
 class FuelType(Enum):
@@ -66,6 +65,9 @@ class ComponentSession(object):
         electricity_injection = config.get("electricity_injection", 0)
         electricity_injection_night = config.get("electricity_injection_night", 0)
 
+        electricity_provider = config.get("electricity_provider", "No provider")
+        electricity_provider_n = providers.get(electricity_provider,0)
+
         inverter_power = config.get("inverter_power", 0)
         inverter_power = str(inverter_power).replace(',','%2C').replace('.','%2C')
 
@@ -73,6 +75,9 @@ class ComponentSession(object):
         combine_elec_and_gas_n = 1 if combine_elec_and_gas == True else 0   
         
         gas_consumption = config.get("gas_consumption", 0)
+        
+        gas_provider = config.get("gas_provider", "No provider")
+        gas_provider_n = providers.get(gas_provider,0)
 
         directdebit_invoice = config.get("directdebit_invoice", True)
         directdebit_invoice_n = 1 if directdebit_invoice == True else 0
@@ -101,7 +106,7 @@ class ComponentSession(object):
         if excl_night_electricity_consumption !=0:
             elec_level += 1
 
-        myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={comp}&d={electricity_digital_counter_n}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C1-{electricity_injection}%7C{electricity_injection_night}%7C{solar_panels_n}%7C%7C0%21{contract_type.code}%21A%21n%7C0%21{contract_type.code}%21A%7C{combine_elec_and_gas_n}%7C{inverter_power}%7C%7C%7C%7C%7C%21%7C%7C{inverter_power}%7C%7C{electric_car_n}-0%7C0-0"
+        myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={comp}&d={electricity_digital_counter_n}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C1-{electricity_injection}%7C{electricity_injection_night}%7C{solar_panels_n}%7C%7C0%21{contract_type.code}%21A%21n%7C0%21{contract_type.code}%21A%7C{combine_elec_and_gas_n}%7C{inverter_power}%7C%7C%7C%7C%7C%21%7C%7C{inverter_power}%7C%7C{electric_car_n}-{electricity_provider_n}%7C{gas_provider_n}-0"
         
         _LOGGER.debug(f"myenergy_url: {myenergy_url}")
         response = self.s.get(myenergy_url,timeout=30,allow_redirects=True)

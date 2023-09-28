@@ -139,7 +139,7 @@ class ComponentSession(object):
         return result
 
         
-config = {"postalcode": 1652, "day_electricity_consumption":658, "night_electricity_consumption": 0, 
+config = {"postalcode": 3300, "day_electricity_consumption":658, "night_electricity_consumption": 0, 
           "excl_night_electricity_consumption": 0,"gas_consumption": 15000,"directdebit_invoice": False,"email_invoice": False,"online_support": False}
 cs = ComponentSession()
 details = cs.get_data(config)

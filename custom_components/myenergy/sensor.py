@@ -31,12 +31,16 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional("night_electricity_consumption"): cv.positive_int,
         vol.Optional("excl_night_electricity_consumption"): cv.positive_int,
         vol.Optional("electricity_injection"): cv.positive_int,
+        vol.Optional("electricity_injection_night"): cv.positive_int,
         vol.Optional("gas_consumption"): cv.positive_int,
         vol.Required("directdebit_invoice"): cv.boolean,
         vol.Required("email_invoice"): cv.boolean,
         vol.Required("online_support"): cv.boolean,
         vol.Required("electric_car"): cv.boolean,
-        vol.Required("combine_elec_and_gas"): cv.boolean
+        vol.Required("combine_elec_and_gas"): cv.boolean,
+        vol.Required("electricity_digital_counter"): cv.boolean,
+        vol.Required("solar_panels"): cv.boolean,
+        vol.Optional("inverter_power"): cv.positive_int
     }
 )
 
@@ -53,8 +57,7 @@ async def dry_setup(hass, config_entry, async_add_devices):
     excl_night_electricity_consumption = config.get("excl_night_electricity_consumption", 0)
     electricity_injection = config.get("electricity_injection", 0)
     gas_consumption = config.get("gas_consumption", 0)
-    
-    combine_elec_and_gas = config.get("combine_elec_and_gas", False)    
+     
 
     check_settings(config, hass)
     sensors = []
@@ -67,11 +70,9 @@ async def dry_setup(hass, config_entry, async_add_devices):
     assert componentData._details is not None
 
     
-    electricity_comp = day_electricity_consumption != 0 or night_electricity_consumption != 0 or excl_night_electricity_consumption != 0
+    electricity_comp = day_electricity_consumption != 0 or night_electricity_consumption != 0 or excl_night_electricity_consumption != 0 or electricity_injection != 0
     gas_comp = gas_consumption != 0
 
-    
-    #TODO: support for combined type instead of split gas/elec
 
     if gas_comp:
         sensorGasFixed = ComponentSensor(componentData, postalcode, FuelType.GAS,ContractType.FIXED)
@@ -149,6 +150,10 @@ class ComponentData:
     @property
     def unique_id(self):
         return f"{DOMAIN}-{self._postalcode}"
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return f"{DOMAIN}-{self._postalcode}"
 
     # same as update, but without throttle to make sure init is always executed
     async def _forced_update(self):
@@ -163,7 +168,9 @@ class ComponentData:
                 try:
                     self._details[contract_type.code] = await self._hass.async_add_executor_job(lambda: self._session.get_data(self._config, contract_type))
                     self._refresh_required = False
-                except:
+                except Exception as e:
+                    # Log the exception details
+                    _LOGGER.warning(f"An exception occurred, will retry: {str(e)}", exc_info=True)
                     self._refresh_required = True
                 _LOGGER.debug("Data fetched completed " + NAME)
             else:
@@ -201,6 +208,7 @@ class ComponentSensor(Entity):
         self._energycost = None
         self._netrate = None
         self._promo = None
+        self._name = f"{NAME} {self._postalcode}"
 
     @property
     def state(self):
@@ -211,6 +219,7 @@ class ComponentSensor(Entity):
         await self._data.update()
         self._details = self._data._details
         self._last_update =  self._data._last_update
+        self._name = f"{NAME} {self._postalcode} {self._fuel_type.fullnameEN} {self._contract_type.fullname}"
         self._contract_type_details = self._details.get(self._contract_type.code)
         # _LOGGER.debug(f"self._contract_type_details: {self._contract_type_details}")
         for fueltype_name in self._contract_type_details.keys():
@@ -258,7 +267,7 @@ class ComponentSensor(Entity):
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return f"{NAME} {self._postalcode} {self._fuel_type.fullnameEN} {self._contract_type.fullname}"
+        return self._name
 
     @property
     def extra_state_attributes(self) -> dict:
