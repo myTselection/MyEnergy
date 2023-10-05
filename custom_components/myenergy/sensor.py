@@ -146,6 +146,7 @@ class ComponentData:
         self._details = {}
         self._last_update = None
         self._refresh_required = True
+        self._refresh_retry = 0
 
     @property
     def unique_id(self):
@@ -158,6 +159,7 @@ class ComponentData:
     # same as update, but without throttle to make sure init is always executed
     async def _forced_update(self):
         _LOGGER.info("Fetching init stuff for " + NAME)
+        self._refresh_retry += 1
         if not(self._session):
             self._session = ComponentSession()
         
@@ -167,6 +169,7 @@ class ComponentData:
                 _LOGGER.debug("Getting data for " + NAME)
                 try:
                     self._details[contract_type.code] = await self._hass.async_add_executor_job(lambda: self._session.get_data(self._config, contract_type))
+                    self._refresh_retry = 0
                     self._refresh_required = False
                 except Exception as e:
                     # Log the exception details
@@ -182,7 +185,7 @@ class ComponentData:
 
     async def update(self):
         # force update if (some) values are still unknown
-        if self._details is None or self._details is {} or self._refresh_required:
+        if (self._details is None or self._details is {} or self._refresh_required) and self._refresh_retry < 5:
             await self._forced_update()
         else:
             await self._update()
