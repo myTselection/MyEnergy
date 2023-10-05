@@ -91,14 +91,11 @@ class ComponentSession(object):
         electricity_comp = day_electricity_consumption != 0 or night_electricity_consumption != 0 or excl_night_electricity_consumption != 0
         gas_comp = gas_consumption != 0
 
-        if electricity_comp and gas_comp:
-            comp = "elektriciteit-en-aardgas"
-        elif electricity_comp: 
-            comp = "elektriciteit"
-        elif gas_comp:
-            comp = "aardgas"
-        else:
-            comp = "elektriciteit-en-aardgas"
+        types_comp = []
+        if electricity_comp: 
+            types_comp.append("elektriciteit")
+        if gas_comp:
+            types_comp.append("aardgas")
     
         elec_level = 0
         if night_electricity_consumption != 0:
@@ -106,82 +103,86 @@ class ComponentSession(object):
         if excl_night_electricity_consumption !=0:
             elec_level += 1
 
-        myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={comp}&d={electricity_digital_counter_n}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C1-{electricity_injection}%7C{electricity_injection_night}%7C{solar_panels_n}%7C%7C0%21{contract_type.code}%21A%21n%7C0%21{contract_type.code}%21A%7C{combine_elec_and_gas_n}%7C{inverter_power}%7C%7C%7C%7C%7C%21%7C%7C{inverter_power}%7C%7C{electric_car_n}-{electricity_provider_n}%7C{gas_provider_n}-0"
-        
-        _LOGGER.debug(f"myenergy_url: {myenergy_url}")
-        response = self.s.get(myenergy_url,timeout=30,allow_redirects=True)
-        assert response.status_code == 200
-        
-        _LOGGER.debug("get result status code: " + str(response.status_code))
-        # _LOGGER.debug("get result response: " + str(response.text))
-        soup = BeautifulSoup(response.text, 'html.parser')
-
         result = {}
-
-        
-        # sections = soup.find_all('div', class_='container-fluid container-fluid-custom')
-        # for section in sections:
-        
-        section_ids = []
-        if electricity_comp:
-            section_ids.append("RestultatElec")
-        if gas_comp:
-            section_ids.append("RestultatGas")
-        if combine_elec_and_gas:
-            section_ids = ["RestultatDualFuel"]
-        for section_id in section_ids:
-            _LOGGER.debug(f"section_id {section_id}")
-            section =  soup.find(id=section_id)
-            # if section == None:
-                # continue
-
-            sectionName = section.find("caption", class_="sr-only").text
-            # providerdetails = section.find_all('tr', class_='cleantable_overview_row')
-            providerdetails = section.find_all('div', class_='product_details')
-            providerdetails_array = []
-            for providerdetail in providerdetails:
-                providerdetails_name = providerdetail.find('div', class_='product_details__header').text
-                providerdetails_name = providerdetails_name.replace('\n', '')
-
-                # Find the <img> element within the specified <div> by class name
-                img_element = providerdetail.find('div', class_='provider-logo-md').find('img')
-
-                # Extract the 'alt' attribute, which contains the provider name
-                provider_name = img_element['alt']
-                provider_name = provider_name.replace('Logo ','').title()
+        for type_comp in types_comp:
+            myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={type_comp}&d={electricity_digital_counter_n}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C1-{electricity_injection}%7C{electricity_injection_night}%7C{solar_panels_n}%7C%7C0%21{contract_type.code}%21A%21n%7C0%21{contract_type.code}%21A%7C{combine_elec_and_gas_n}%7C{inverter_power}%7C%7C%7C%7C%7C%21%7C%7C{inverter_power}%7C%7C{electric_car_n}-{electricity_provider_n}%7C{gas_provider_n}-0"
+            
+            _LOGGER.debug(f"myenergy_url: {myenergy_url}")
+            response = self.s.get(myenergy_url,timeout=30,allow_redirects=True)
+            assert response.status_code == 200
+            
+            _LOGGER.debug("get result status code: " + str(response.status_code))
+            # _LOGGER.debug("get result response: " + str(response.text))
+            soup = BeautifulSoup(response.text, 'html.parser')
 
 
-                # Find all table rows and extract the data
-                table_rows = providerdetail.find_all('tr')
+            
+            # sections = soup.find_all('div', class_='container-fluid container-fluid-custom')
+            # for section in sections:
+            
+            section_ids = []
+            # if electricity_comp:
+            #     section_ids.append("RestultatElec")
+            # if gas_comp:
+            #     section_ids.append("RestultatGas")
+            # if combine_elec_and_gas:
+            #     section_ids = ["RestultatDualFuel"]
+            section_ids.append("ScrollResult")
+            for section_id in section_ids:
+                _LOGGER.debug(f"section_id {section_id}")
+                section =  soup.find(id=section_id)
+                # if section == None:
+                    # continue
 
-                # Create a list to store the table data
-                # table_data = []
-                json_data = {}
-                json_data['name'] = providerdetails_name
-                json_data['url'] = myenergy_url
-                json_data['provider'] = provider_name
+                # sectionName = section.find("caption", class_="sr-only").text
+                sectionName = section.find("h3", class_="h4 text-strong").text
+                sectionName = sectionName.replace('Resultaten ','').title()
+                # providerdetails = section.find_all('tr', class_='cleantable_overview_row')
+                providerdetails = section.find_all('div', class_='card-body')
+                providerdetails_array = []
+                for providerdetail in providerdetails:
+                    providerdetails_name = providerdetail.find('li', class_='list-inline-item large-body-font-size text-strong mb-2 mb-sm-0').text
+                    providerdetails_name = providerdetails_name.replace('\n', '')
 
-                heading_index = 0
-                # Loop through the rows and extract the data into a dictionary
-                for row in table_rows:
-                    columns = row.find_all(['th', 'td'])
-                    row_data = []
-                    for column in columns:
-                        data = column.get_text().strip()
-                        if data != "":
-                            row_data.append(data.replace("\xa0", "").replace("+ ", "").replace("â‚¬","€"))
-                    if len(row_data) > 0:
-                        if len(row_data) == 1 and heading_index <= (len(headings)-1) and row_data[0] != headings[heading_index] and '€' in row_data[0] and 'korting' not in row_data[0] and 'promo' not in row_data[0] and len(row_data[0]) < 10:
-                            json_data[headings[heading_index]] = row_data[0]
-                            heading_index += 1
-                        else:
-                            json_data[row_data[0]] = row_data[1:]
-                    # table_data.append(row_data)
-                heading_index = 0
-                providerdetails_array.append(json_data)
-                #only first restult is needed, if all details are required, remove the break below
-                break
-            result[sectionName] = providerdetails_array
+                    # Find the <img> element within the specified <div> by class name
+                    img_element = providerdetail.find('div', class_='provider-logo-lg').find('img')
+
+                    # Extract the 'alt' attribute, which contains the provider name
+                    provider_name = img_element['alt']
+                    provider_name = provider_name.replace('Logo ','').title()
+
+
+                    # Find all table rows and extract the data
+                    table_rows = providerdetail.find_all('tr')
+
+                    # Create a list to store the table data
+                    # table_data = []
+                    json_data = {}
+                    json_data['name'] = providerdetails_name
+                    json_data['url'] = myenergy_url
+                    json_data['provider'] = provider_name
+
+                    heading_index = 0
+                    # Loop through the rows and extract the data into a dictionary
+                    for row in table_rows:
+                        columns = row.find_all(['th', 'td'])
+                        row_data = []
+                        for column in columns:
+                            data = column.get_text().strip()
+                            if data != "":
+                                row_data.append(data.replace("\xa0", "").replace("+ ", "").replace("â‚¬","€"))
+                        if len(row_data) > 0:
+                            if len(row_data) == 1 and heading_index <= (len(headings)-1) and row_data[0] != headings[heading_index] and '€' in row_data[0] and 'korting' not in row_data[0] and 'promo' not in row_data[0] and len(row_data[0]) < 10:
+                                json_data[headings[heading_index]] = row_data[0]
+                                heading_index += 1
+                            else:
+                                json_data[row_data[0]] = row_data[1:]
+                        # table_data.append(row_data)
+                    heading_index = 0
+                    providerdetails_array.append(json_data)
+                    #only first restult is needed, if all details are required, remove the break below
+                    break
+                result[sectionName] = providerdetails_array
         return result
 
         
