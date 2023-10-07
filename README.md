@@ -51,8 +51,8 @@ Still some optimisations are planned, see [Issues](https://github.com/myTselecti
 
 ## Technical pointers
 The main logic and API connection related code can be found within source code MyEnergy/custom_components/MyEnery:
-- [sensor.py](https://github.com/myTselection/MyEnergy/blob/master/custom_components/MyEnergy/sensor.py)
-- [utils.py](https://github.com/myTselection/MyEnergy/blob/master/custom_components/MyEnergy/utils.py) -> mainly ComponentSession class
+- [sensor.py](https://github.com/myTselection/MyEnergy/blob/master/custom_components/myenergy/sensor.py)
+- [utils.py](https://github.com/myTselection/MyEnergy/blob/master/custom_components/myenergy/utils.py) -> mainly ComponentSession class
 
 All other files just contain boilerplat code for the integration to work wtihin HA or to have some constants/strings/translations.
 
