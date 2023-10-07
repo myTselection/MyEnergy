@@ -18,6 +18,8 @@ For local gas station fuel prices and mazout, please check out my other custom i
 
 ## Installation
 - [HACS](https://hacs.xyz/): add url https://github.com/myTselection/MyEnergy as custom repository (HACS > Integration > option: Custom Repositories)
+	- [![Open your Home Assistant instance and open the repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg?style=flat-square)](https://my.home-assistant.io/redirect/hacs_repository/?owner=myTselection&repository=MyEnergy&category=integration)
+
 - Restart Home Assistant
 - Add 'MyEnergy' integration via HA Settings > 'Devices and Services' > 'Integrations'
 
