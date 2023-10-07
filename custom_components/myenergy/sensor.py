@@ -8,7 +8,7 @@ import voluptuous as vol
 from homeassistant.components.sensor import PLATFORM_SCHEMA, SensorEntity, SensorDeviceClass
 from homeassistant.const import ATTR_ATTRIBUTION
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity import Entity, DeviceInfo
 from homeassistant.util import Throttle
 from homeassistant.const import (
     CONF_NAME,
@@ -150,11 +150,11 @@ class ComponentData:
 
     @property
     def unique_id(self):
-        return f"{DOMAIN}-{self._postalcode}"
+        return f"{NAME} {self._postalcode}"
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return f"{DOMAIN}-{self._postalcode}"
+        return self.unique_id
 
     # same as update, but without throttle to make sure init is always executed
     async def _forced_update(self):
@@ -265,12 +265,12 @@ class ComponentSensor(Entity):
     @property
     def unique_id(self) -> str:
         """Return the unique ID of the sensor."""
-        return f"{self._data.unique_id}-{self._fuel_type.fullnameEN}-{self._contract_type.fullname}"
+        return f"{self._data.unique_id} {self._fuel_type.fullnameEN} {self._contract_type.fullname}"
 
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return self._name
+        return self.unique_id
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -291,14 +291,18 @@ class ComponentSensor(Entity):
             "total kWh per year": self._kWhyear
         }
 
+   
     @property
-    def device_info(self) -> dict:
-        """Device info dictionary."""
-        return {
-            "identifiers": {(DOMAIN, self._data.unique_id)},
-            "name": self.name,
-            "manufacturer": DOMAIN,
-        }
+    def device_info(self) -> DeviceInfo:
+        """Return the device info."""
+        return DeviceInfo(
+            identifiers={
+                # Serial numbers are unique identifiers within a specific domain
+                (NAME, self._data.unique_id)
+            },
+            name=self._data.name,
+            manufacturer= NAME
+        )
 
     @property
     def unit(self) -> int:
