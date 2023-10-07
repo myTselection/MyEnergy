@@ -27,6 +27,7 @@ For local gas station fuel prices and mazout, please check out my other custom i
 Device `MyEnergy` should become available with the following sensors:
 - <details><summary><code>MyEnergy [postalcode] [FuelType] [ContractType]</code> with details </summary>
 
+
 	| Attribute | Description |
 	| --------- | ----------- |
 	| State     | cost in € per kWh  |
@@ -35,7 +36,7 @@ Device `MyEnergy` should become available with the following sensors:
 	| Fuel type     | Fuel type (Electricity or Gas) used to retrieve the prices |
 	| Contract type | Contract type (Fixed or Variable) used to retrieve the prices |
 	| Url           | Full url that was used to retrieve the data, throught this url, full details can be seen and contract can be requested |
- | Provider Name | Name of the provider of the cheapest subscription for which a match was found |
+ 	| Provider Name | Name of the provider of the cheapest subscription for which a match was found |
 	| Contract Name | Name of the cheapest subscription for which a match was found |
 	| Energycost    | Energycost (provider dependent part of subscription cost) of the cheapest subscription for which a match was found |
 	| Netrate       | Netrate  (fixed part of subscription cost) of the cheapest subscription for which a match was found |
@@ -43,7 +44,7 @@ Device `MyEnergy` should become available with the following sensors:
 	| Total price per year    | Total price per year of the cheapest subscription for which a match was found |
 	| Total kWh per year      | Total kWh per year on wich the lookup is based (total combination of day/night/... consumptions) |
 	
-	</details>
+</details>
 
 ## Status
 Still some optimisations are planned, see [Issues](https://github.com/myTselection/MyEnergy/issues) section in GitHub.
