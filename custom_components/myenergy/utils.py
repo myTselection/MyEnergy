@@ -22,7 +22,7 @@ headings= ["Energiekosten", "Nettarieven en heffingen", "Promo via Mijnenergie"]
 
 class FuelType(Enum):
     GAS = ("G","Aardgas","Gas")
-    ELECTRICITY = ("E","Elektriciteit","Electricty")
+    ELECTRICITY = ("E","Elektriciteit","Electricity")
     COMBINED = ("C","Elektriciteit en aardgas","Electricity and Gas")
     
     def __init__(self, code,fullnameNL, fullnameEN):
