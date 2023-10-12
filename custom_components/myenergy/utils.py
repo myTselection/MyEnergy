@@ -122,12 +122,14 @@ class ComponentSession(object):
             
             section_ids = []
             # if electricity_comp:
-            #     section_ids.append("RestultatElec")
+            if type_comp == "elektriciteit":
+                section_ids.append("RestultatElec")
             # if gas_comp:
-            #     section_ids.append("RestultatGas")
+            if type_comp == "aardgas":
+                section_ids.append("RestultatGas")
             # if combine_elec_and_gas:
-            #     section_ids = ["RestultatDualFuel"]
-            section_ids.append("ScrollResult")
+                # section_ids = ["RestultatDualFuel"]
+            # section_ids.append("ScrollResult")
             for section_id in section_ids:
                 _LOGGER.debug(f"section_id {section_id}")
                 section =  soup.find(id=section_id)
@@ -138,7 +140,12 @@ class ComponentSession(object):
                 sectionName = section.find("h3", class_="h4 text-strong").text
                 sectionName = sectionName.replace('Resultaten ','').title()
                 # providerdetails = section.find_all('tr', class_='cleantable_overview_row')
-                providerdetails = section.find_all('div', class_='card-body')
+                # non_ad_section = section.find_all('div', class_='card card-energy-details border border-light')
+                non_ad_section = section.select('div[class*="card card-energy-details border border-light"]')
+                if non_ad_section is None or len(non_ad_section) == 0:
+                    providerdetails = section.find_all('div', class_='card-body')
+                else:
+                    providerdetails = non_ad_section
                 providerdetails_array = []
                 for providerdetail in providerdetails:
                     providerdetails_name = providerdetail.find('li', class_='list-inline-item large-body-font-size text-strong mb-2 mb-sm-0').text
@@ -185,4 +192,26 @@ class ComponentSession(object):
                 result[sectionName] = providerdetails_array
         return result
 
-        
+
+# #test
+# session = ComponentSession()
+
+# config = {"postalcode": "1000",
+#           "electricity_digital_counter": False, 
+#           "day_electricity_consumption":555, 
+#           "night_electricity_consumption": 0,
+#           "excl_night_electricity_consumption": 0,
+#           "solar_panels": False, "electricity_injection": 0,
+#           "electricity_injection_night": 0, 
+#           "electricity_provider": "No provider", 
+#           "inverter_power": 0, 
+#           "combine_elec_and_gas": False, 
+#           "gas_consumption": 15000, 
+#           "gas_provider": "No provider", 
+#           "directdebit_invoice": True, 
+#           "email_invoice": True, 
+#           "online_support": True, 
+#           "electric_car": False}
+# # print(session.get_data(config, ContractType.FIXED))
+# print(session.get_data(config, ContractType.VARIABLE))
+
