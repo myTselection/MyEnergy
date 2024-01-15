@@ -1,4 +1,4 @@
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![HACS Default](https://img.shields.io/badge/HACS-Default-blue.svg)](https://github.com/hacs/default)
 [![GitHub release](https://img.shields.io/github/release/myTselection/MyEnergy.svg)](https://github.com/myTselection/MyEnergy/releases)
 ![GitHub repo size](https://img.shields.io/github/repo-size/myTselection/MyEnergy.svg)
 
@@ -9,7 +9,7 @@
 # My Energy - MijnEnergie.be Home Assistant integration
 [Mijn Energie](https://www.mijnenergie.be/) Home Assistant custom component integration for Belgium. This custom component has been built from the ground up to bring MijnEnergie.be site data into Home Assistant sensors in order to follow up energy electricty and gas prices. This integration is built against the public website provided by MijnEnergie.be for Belgium and has not been tested for any other countries.
 
-This integration is in no way affiliated with MijnEnergie.
+This integration is in no way affiliated with MijnEnergie. **Please don't report issues with this integration to MijnEnergie.be, they will not be able to support you.**
 
 For local gas station fuel prices and mazout, please check out my other custom integration [Carbu.com](https://github.com/myTselection/Carbu_com)
 
