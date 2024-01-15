@@ -225,6 +225,9 @@ class ComponentSensor(Entity):
         self._name = f"{NAME} {self._postalcode} {self._fuel_type.fullnameEN} {self._contract_type.fullname}"
         self._contract_type_details = self._details.get(self._contract_type.code)
         # _LOGGER.debug(f"self._contract_type_details: {self._contract_type_details}")
+        if self._contract_type_details == None:
+            _LOGGER.warning(f"{NAME} requested contract type {self._contract_type.code} not found, available data: {self._details}")
+            return
         for fueltype_name in self._contract_type_details.keys():
             if self._fuel_type.fullnameNL in fueltype_name:
                 fueltype_detail = self._contract_type_details.get(fueltype_name)
