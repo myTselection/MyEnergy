@@ -21,7 +21,8 @@
                     "gas_provider": "Select your current gas provider", 
                     "directdebit_invoice": "Mandatory payment of invoice by direct debit",
                     "email_invoice": "Send invoice only via e-mail",
-                    "online_support": "Customer service access only via email/internet"
+                    "online_support": "Customer service access only via email/internet",
+                    "add_details": "Add extended product and price details as json"
                 }
             },
             "edit": {
@@ -43,7 +44,8 @@
                     "gas_provider": "Select your current gas provider", 
                     "directdebit_invoice": "Mandatory payment of invoice by direct debit",
                     "email_invoice": "Send invoice only via e-mail",
-                    "online_support": "Customer service access only via email/internet"
+                    "online_support": "Customer service access only via email/internet",
+                    "add_details": "Add extended product and price details as json"
                 }
             }
 
@@ -74,7 +76,8 @@
                     "gas_provider": "Select your current gas provider", 
                     "directdebit_invoice": "Mandatory payment of invoice by direct debit",
                     "email_invoice": "Send invoice only via e-mail",
-                    "online_support": "Customer service access only via email/internet"
+                    "online_support": "Customer service access only via email/internet",
+                    "add_details": "Add extended product and price details as json"
                 }
             }
         },

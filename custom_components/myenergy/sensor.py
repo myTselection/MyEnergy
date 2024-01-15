@@ -36,6 +36,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Required("directdebit_invoice"): cv.boolean,
         vol.Required("email_invoice"): cv.boolean,
         vol.Required("online_support"): cv.boolean,
+        vol.Required("add_details"): cv.boolean,
         vol.Required("electric_car"): cv.boolean,
         vol.Required("combine_elec_and_gas"): cv.boolean,
         vol.Required("electricity_digital_counter"): cv.boolean,
@@ -143,6 +144,7 @@ class ComponentData:
         self._directdebit_invoice = config.get("directdebit_invoice", True)
         self._email_invoice = config.get("email_invoice", True)
         self._online_support = config.get("online_support", True)
+        self._add_details = config.get("add_details", False)
         self._details = {}
         self._last_update = None
         self._refresh_required = True
@@ -202,6 +204,7 @@ class ComponentSensor(Entity):
         self._priceyear = None
         self._kWhyear = None
         self._fuel_type = fuel_type
+        self._fueltype_detail = None
         self._contract_type = contract_type
         self._postalcode = postalcode
         self._providerdetails = None
@@ -212,6 +215,7 @@ class ComponentSensor(Entity):
         self._netrate = None
         self._promo = None
         self._name = f"{NAME} {self._postalcode}"
+        self._add_details = data._add_details
 
     @property
     def state(self):
@@ -220,7 +224,8 @@ class ComponentSensor(Entity):
 
     async def async_update(self):
         await self._data.update()
-        self._details = self._data._details
+        self._details = self._data._details        
+        self._add_details = self._data._add_details
         self._last_update =  self._data._last_update
         self._name = f"{NAME} {self._postalcode} {self._fuel_type.fullnameEN} {self._contract_type.fullname}"
         self._contract_type_details = self._details.get(self._contract_type.code)
@@ -230,9 +235,9 @@ class ComponentSensor(Entity):
             return
         for fueltype_name in self._contract_type_details.keys():
             if self._fuel_type.fullnameNL in fueltype_name:
-                fueltype_detail = self._contract_type_details.get(fueltype_name)
-                _LOGGER.debug(f"fueltype_detail: {self._contract_type} - {fueltype_name} - {fueltype_detail}")
-                self._providerdetails = fueltype_detail[0]
+                self._fueltype_detail = self._contract_type_details.get(fueltype_name)
+                _LOGGER.debug(f"fueltype_detail: {self._contract_type} - {fueltype_name} - {self._fueltype_detail}")
+                self._providerdetails = self._fueltype_detail[0]
                 self._url = self._providerdetails.get('url',"")
                 self._providername = self._providerdetails.get('provider',"")
                 self._contractname = self._providerdetails.get('name',"")
@@ -291,7 +296,8 @@ class ComponentSensor(Entity):
             "netrate": self._netrate,
             "promo": self._promo,
             "total price per year": self._priceyear,
-            "total kWh per year": self._kWhyear
+            "total kWh per year": self._kWhyear,
+            "fulldetail": self._fueltype_detail if self._add_details else "details disabled in config"
         }
 
    

@@ -212,6 +212,26 @@ class ComponentSession(object):
 #           "email_invoice": True, 
 #           "online_support": True, 
 #           "electric_car": False}
+
+
+# config = {"postalcode": "1190",
+#           "electricity_digital_counter": True, 
+#           "day_electricity_consumption":960, 
+#           "night_electricity_consumption": 1400,
+#           "excl_night_electricity_consumption": 0,
+#           "solar_panels": False, "electricity_injection": 0,
+#           "electricity_injection_night": 0, 
+#           "electricity_provider": "No provider", 
+#           "inverter_power": 0, 
+#           "combine_elec_and_gas": False, 
+#           "gas_consumption": 17000, 
+#           "gas_provider": "No provider", 
+#           "directdebit_invoice": True, 
+#           "email_invoice": True, 
+#           "online_support": True, 
+#           "electric_car": False}
+
+
 # # print(session.get_data(config, ContractType.FIXED))
 # print(session.get_data(config, ContractType.VARIABLE))
 
