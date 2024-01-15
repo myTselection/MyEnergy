@@ -242,7 +242,7 @@ class ComponentSensor(Entity):
                 if len(price_info) > 0:
                     self._price = price_info[0]
                     self._price = self._price.replace('câ‚¬/kWh','').replace('c€/kWh','')
-                    self._price = float(self._price.replace(',', '.'))/100
+                    self._price = float(self._price.replace('.','').replace(',', '.'))/100
                     if len(price_info) >= 2:
                         self._kWhyear = price_info[1]
                         self._priceyear = price_info[2]
