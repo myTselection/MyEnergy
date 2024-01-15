@@ -45,7 +45,7 @@ Device `MyEnergy` should become available with the following sensors:
 	| Promo         | Promo (provider dependent promotion, part of subscription cost) of the cheapest subscription for which a match was found |
 	| Total price per year    | Total price per year of the cheapest subscription for which a match was found |
 	| Total kWh per year      | Total kWh per year on wich the lookup is based (total combination of day/night/... consumptions) |
-  | fulldetail | If configuration option to add product and price detail json is enabled, all site data will be added as a json to enable fetching extra contract specific data |
+  | fulldetail | If configuration option to add product and price detail json is enabled, all site data will be added as a json to enable fetching extra contract specific data. Example to fetch data out of it `{{state_attr('sensor.myenergy_1190_electricity_fixed','fulldetail')[0].Dagtarief[0]}}` |
 	
 </details>
 
