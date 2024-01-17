@@ -27,7 +27,7 @@ For local gas station fuel prices and mazout, please check out my other custom i
 
 ## Integration
 Device `MyEnergy` should become available with the following sensors:
-- <details><summary><code>MyEnergy [postalcode] [FuelType] [ContractType]</code> with details </summary>
+- <details><summary><code>MyEnergy [postalcode] [FuelType] [ContractType]</code> with details on cheapest market energy rate that can be available to you (if you'd change contract), taking into account your configured criteria</summary>
 
 
 	| Attribute | Description |
