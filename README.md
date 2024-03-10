@@ -11,8 +11,8 @@
 
 This integration is in no way affiliated with MijnEnergie. 
 
-| :warning: Please don't report issues with this integration to MijnEnergie.be, they will not be able to support you.** |
-| ----------------------------------------------------------------------------------------------------------------------|
+| :warning: Please don't report issues with this integration to MijnEnergie.be, they will not be able to support you. |
+| --------------------------------------------------------------------------------------------------------------------|
 
 For local gas station fuel prices and mazout, please check out my other custom integration [Carbu.com](https://github.com/myTselection/Carbu_com)
 
