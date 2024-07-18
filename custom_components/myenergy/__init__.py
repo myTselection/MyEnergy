@@ -71,7 +71,7 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up component as config entry."""
-    await hass.config_entries.async_forward_entry_setup(config_entry, Platform.SENSOR)
+    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
     
     config_entry.async_on_unload(config_entry.add_update_listener(update_listener))
     # _LOGGER.info(f"{DOMAIN} register_services")
