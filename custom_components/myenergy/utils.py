@@ -6,10 +6,13 @@ from datetime import datetime
 import urllib.parse
 from enum import Enum
 
+from .const import (
+    DOMAIN,
+)
 
 import voluptuous as vol
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER = logging.getLogger(DOMAIN)
 
 _DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S.0%z"
 
