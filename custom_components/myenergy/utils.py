@@ -288,6 +288,7 @@ def _build_simulation_payload(config, locality):
             payload["eAnnualDayInjection"] = int(electricity_injection)
             if meter_type == "BI":
                 payload["eAnnualNightInjection"] = int(electricity_injection_night)
+            payload["eInverterPower"] = int(parsed["inverter_power"])
 
     if gas_comp:
         payload["gAnnualKWhConsumption"] = int(gas_consumption)
@@ -435,10 +436,18 @@ class ComponentSession(object):
         parsed = urllib.parse.urlparse(final_url)
         callback_url = urllib.parse.parse_qs(parsed.query).get("callbackUrl", [""])[0]
         if callback_url:
-            try:
-                self.s.get(callback_url, timeout=timeout, allow_redirects=True)
-            except requests.RequestException:
-                _LOGGER.debug("Privacy gate callback request failed for %s", url, exc_info=True)
+            cb_parsed = urllib.parse.urlparse(callback_url)
+            allowed_domains = ("mijnenergie.be", "dpgmedia.be", "comparateur.be")
+            cb_host = (cb_parsed.hostname or "").lower()
+            scheme_ok = cb_parsed.scheme in ("https", "http")
+            host_ok = any(cb_host == d or cb_host.endswith("." + d) for d in allowed_domains)
+            if scheme_ok and host_ok:
+                try:
+                    self.s.get(callback_url, timeout=timeout, allow_redirects=True)
+                except requests.RequestException:
+                    _LOGGER.debug("Privacy gate callback request failed for %s", url, exc_info=True)
+            else:
+                _LOGGER.warning("Skipping privacy gate callback with untrusted URL: %s", cb_parsed.hostname)
 
         return self.s.get(url, timeout=timeout, allow_redirects=True)
 
@@ -506,30 +515,21 @@ class ComponentSession(object):
         if locality is not None:
             simulation_payload = _build_simulation_payload(config, locality)
             simulation_url = "https://api.comparateur.be/energy/comparison/simulation"
-            simulation_response = self.s.post(
-                simulation_url,
-                json=simulation_payload,
-                timeout=30,
-                allow_redirects=True,
-            )
             try:
+                simulation_response = self.s.post(
+                    simulation_url,
+                    json=simulation_payload,
+                    timeout=30,
+                    allow_redirects=True,
+                )
                 simulation_response.raise_for_status()
                 simulation_data = simulation_response.json()
-            except requests.exceptions.HTTPError as err:
-                # 422 means payload rejected by API validation. Keep flow alive and fallback
-                # to generated results parsing instead of failing whole refresh.
-                if simulation_response.status_code == 422:
-                    response_text = simulation_response.text or ""
-                    response_snippet = response_text[:500]
-                    _LOGGER.warning(
-                        "Simulation API rejected payload with HTTP 422. Falling back to HTML parsing. "
-                        "payload=%s response=%s",
-                        simulation_payload,
-                        response_snippet,
-                    )
-                    simulation_data = None
-                else:
-                    raise err
+            except requests.RequestException as err:
+                _LOGGER.warning(
+                    "Simulation API call failed, falling back to HTML parsing. error=%s",
+                    err,
+                )
+                simulation_data = None
 
         for type_comp in types_comp:
             section_name = _build_section_name(type_comp)

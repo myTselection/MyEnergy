@@ -12,7 +12,13 @@ import requests
 
 def main():
     url = 'https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e=elektriciteit&d=0&c=particulier&cp=1000&i2=0----3800-0-0-1----0----1-1%7C1%7C1%7C1-0%7C0%7C0%7C%7C0%21F%21A%21n%7C0%21F%21A%7C0%7C0%7C%7C%7C%7C%7C%21%7C%7C0%7C%7C0-0%7C0-0'
-    t = requests.get(url, timeout=30).text
+    response = requests.get(url, timeout=30)
+    try:
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as err:
+        print(f"HTTP error {response.status_code} for {url}: {err}")
+        return
+    t = response.text
     print('__NEXT_DATA__', '__NEXT_DATA__' in t)
     print('next_f', 'self.__next_f.push' in t)
     print('article', '<article' in t, t.count('<article'))

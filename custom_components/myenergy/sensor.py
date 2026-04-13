@@ -203,6 +203,11 @@ class ComponentData:
                             comparison_unavailable_message,
                         )
                         self._comparison_unavailable_logged = True
+                    # Prepopulate remaining contract keys so downstream sensors
+                    # don't hit the "not found" warning path.
+                    for ct in ContractType:
+                        if ct.code not in self._details:
+                            self._details[ct.code] = {}
                     break
                 except Exception as e:
                     # Log the exception details
@@ -277,6 +282,17 @@ class ComponentSensor(Entity):
             return
         if not self._contract_type_details:
             _LOGGER.debug("%s no parsed entries for contract type %s", NAME, self._contract_type.code)
+            self._price = None
+            self._priceyear = None
+            self._kWhyear = None
+            self._url = None
+            self._providername = None
+            self._contractname = None
+            self._energycost = None
+            self._netrate = None
+            self._promo = None
+            self._fueltype_detail = None
+            self._providerdetails = None
             return
         for fueltype_name in self._contract_type_details.keys():
             if self._fuel_type.fullnameNL in fueltype_name:

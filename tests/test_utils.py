@@ -68,7 +68,7 @@ def test_parse_new_results_cards_parses_first_valid_card():
     assert card["name"] == "Smart Flex"
     assert card["url"] == "https://example.com/results"
     assert card["Jaarlijkse kostprijs"] == [
-        "30.00 c€/kWh",
+        "30,00 c€/kWh",
         "3800 kWh/jaar",
         "€ 1140.00/jaar",
     ]
@@ -125,7 +125,7 @@ def test_parse_new_results_cards_parses_legacy_card_layout():
     assert card["provider"] == "Mega"
     assert card["name"] == "Legacy Flex"
     assert card["Jaarlijkse kostprijs"] == [
-        "30.00 c€/kWh",
+        "30,00 c€/kWh",
         "3800 kWh/jaar",
         "€ 1140.00/jaar",
     ]
@@ -155,7 +155,7 @@ def test_parse_new_results_cards_prefers_yearly_context_over_max_value():
     assert "Elektriciteit" in parsed
     card = parsed["Elektriciteit"][0]
     assert card["Jaarlijkse kostprijs"] == [
-        "30.00 c€/kWh",
+        "30,00 c€/kWh",
         "3800 kWh/jaar",
         "€ 1140.00/jaar",
     ]
