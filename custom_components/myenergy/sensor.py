@@ -293,9 +293,16 @@ class ComponentSensor(Entity):
                 self._promo = self._providerdetails.get(headings[2],"")
                 price_info = self._providerdetails.get('Jaarlijkse kostprijs',[])
                 if len(price_info) > 0:
-                    self._price = price_info[0]
-                    self._price = self._price.replace('câ‚¬/kWh','').replace('c€/kWh','')
-                    self._price = float(self._price.replace('.','').replace(',', '.'))/100
+                    raw_price = price_info[0]
+                    raw_price = raw_price.replace('câ‚¬/kWh','').replace('c€/kWh','').strip()
+                    if ',' in raw_price and '.' in raw_price:
+                        # European with thousands sep: "1.032,87"
+                        raw_price = raw_price.replace('.', '').replace(',', '.')
+                    elif ',' in raw_price:
+                        # European decimal only: "32,87"
+                        raw_price = raw_price.replace(',', '.')
+                    # else standard dot-decimal: "32.87"
+                    self._price = float(raw_price) / 100
                     if len(price_info) >= 2:
                         self._kWhyear = price_info[1]
                         self._priceyear = price_info[2]
