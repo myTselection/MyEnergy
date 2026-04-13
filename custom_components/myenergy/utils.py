@@ -364,8 +364,9 @@ def _parse_simulation_results(simulation_data, contract_type, type_comp, yearly_
 
     if yearly_consumption > 0:
         cents_per_kwh = (annual_total / yearly_consumption) * 100
+        cents_per_kwh_text = f"{cents_per_kwh:.2f}".replace(".", ",")
         json_data["Jaarlijkse kostprijs"] = [
-            f"{cents_per_kwh:.2f} c€/kWh",
+            f"{cents_per_kwh_text} c€/kWh",
             f"{yearly_consumption} kWh/jaar",
             f"€ {annual_total:.2f}/jaar",
         ]
