@@ -150,6 +150,7 @@ class ComponentData:
         self._last_update = None
         self._refresh_required = True
         self._refresh_retry = 0
+        self._comparison_unavailable_logged = False
 
     @property
     def unique_id(self):
@@ -195,7 +196,13 @@ class ComponentData:
                     self._details[contract_type.code] = {}
                     self._refresh_required = False
                     self._refresh_retry = 5
-                    _LOGGER.error("%s %s", NAME, comparison_unavailable_message)
+                    if not self._comparison_unavailable_logged:
+                        _LOGGER.warning(
+                            "%s %s Set manual_results_url to a resultaten/offers URL to restore data.",
+                            NAME,
+                            comparison_unavailable_message,
+                        )
+                        self._comparison_unavailable_logged = True
                     break
                 except Exception as e:
                     # Log the exception details

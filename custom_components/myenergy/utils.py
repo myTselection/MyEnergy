@@ -72,22 +72,94 @@ def _build_section_name(type_comp):
 
 
 def _parse_new_results_cards(soup, result_url, yearly_consumption, section_name):
-    cards = soup.select("article")
+    cards = soup.select(
+        "article, div[class*='card card-energy-details'], div.card-energy-details, div.card-body"
+    )
     parsed_cards = []
+    seen_cards = set()
 
     for card in cards:
+        # Avoid duplicates when both container and nested body are selected.
+        if id(card) in seen_cards:
+            continue
+        seen_cards.add(id(card))
+
+        if "card-body" in (card.get("class") or []) and card.find_parent(
+            "div", class_=re.compile(r"card-energy-details")
+        ):
+            continue
+
         provider_img = card.select_one("img[alt]")
         provider_name = _normalize_provider_name(provider_img.get("alt", "") if provider_img else "")
 
         # The first heading in the card is usually the product/contract name.
         name_el = card.select_one("h2, h3, h4")
         contract_name = name_el.get_text(" ", strip=True) if name_el else ""
+        if not contract_name:
+            legacy_name_el = card.select_one(
+                "li.list-inline-item.large-body-font-size.text-strong"
+            )
+            if legacy_name_el is not None:
+                contract_name = legacy_name_el.get_text(" ", strip=True)
 
         card_text = card.get_text(" ", strip=True)
         annual_match = re.search(r"€\s*[0-9\.,]+\s*/\s*jaar", card_text, re.IGNORECASE)
         monthly_match = re.search(r"€\s*[0-9\.,]+\s*/\s*maand", card_text, re.IGNORECASE)
 
         annual_value = _extract_euro_value(annual_match.group(0) if annual_match else "")
+        if annual_value is None:
+            annual_label_match = re.search(
+                r"Jaarlijkse[^€]*€\s*([0-9\.,]+)", card_text, re.IGNORECASE
+            )
+            if annual_label_match:
+                annual_value = _extract_euro_value(f"€ {annual_label_match.group(1)}")
+
+        if annual_value is None:
+            context_patterns = [
+                r"(?:jaarlijk(?:e|se)?(?:\s+kostprijs)?|annual(?:\s+cost)?|yearly(?:\s+cost)?|per\s+year|per\s+jaar|year)\D{0,40}€\s*([0-9\.,]+)",
+                r"€\s*([0-9\.,]+)\D{0,20}(?:/\s*(?:jaar|year)|per\s*(?:jaar|year))",
+            ]
+            for pattern in context_patterns:
+                context_match = re.search(pattern, card_text, re.IGNORECASE)
+                if context_match:
+                    annual_value = _extract_euro_value(f"€ {context_match.group(1)}")
+                    if annual_value is not None:
+                        break
+
+        if annual_value is None:
+            euro_candidates = []
+            for euro_match in re.finditer(r"€\s*([0-9\.,]+)", card_text):
+                euro_value = _extract_euro_value(euro_match.group(0))
+                if euro_value is not None:
+                    euro_candidates.append((euro_value, euro_match.start()))
+
+            if euro_candidates:
+                keyword_positions = [
+                    keyword_match.start()
+                    for keyword_match in re.finditer(
+                        r"\b(?:jaarlijks?e?|per\s*jaar|jaar|annual|yearly|per\s*year|year)\b",
+                        card_text,
+                        re.IGNORECASE,
+                    )
+                ]
+
+                if keyword_positions:
+                    annual_value = min(
+                        euro_candidates,
+                        key=lambda candidate: min(
+                            abs(candidate[1] - keyword_pos)
+                            for keyword_pos in keyword_positions
+                        ),
+                    )[0]
+                else:
+                    euro_values = [value for value, _ in euro_candidates]
+                    annual_value = max(euro_values)
+                    _LOGGER.warning(
+                        "Annual value fallback used max(euro_values). candidates=%s card_text=%s",
+                        euro_values,
+                        card_text[:300] if len(card_text) > 300 else card_text,
+                    )
+
         monthly_value = _extract_euro_value(monthly_match.group(0) if monthly_match else "")
 
         json_data = {
@@ -256,6 +328,24 @@ def _parse_simulation_results(simulation_data, contract_type, type_comp, yearly_
 
     return {section_name: [json_data]}
 
+
+def _extract_results_page_url(html_text, source_url):
+    """Extract first plausible resultaten URL from page HTML."""
+    if not html_text:
+        return ""
+
+    patterns = [
+        r'href=["\']([^"\']*(?:/resultaten/|/energie-vergelijken-3-resultaten-|/vergelijking/stap-3/)[^"\']*)["\']',
+        r'"(https://www\.mijnenergie\.be/(?:resultaten/|energie-vergelijken-3-resultaten-|vergelijking/stap-3/)[^"]+)"',
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, html_text, re.IGNORECASE)
+        if match:
+            return urllib.parse.urljoin(source_url, match.group(1))
+
+    return ""
+
 class FuelType(Enum):
     GAS = ("G","Aardgas","Gas")
     ELECTRICITY = ("E","Elektriciteit","Electricity")
@@ -288,6 +378,24 @@ class ComponentSession(object):
         self.s = requests.Session()
         self.s.headers["User-Agent"] = "Python/3"
         self.s.headers["Accept-Language"] = "en-US,en;q=0.9"
+
+    def _mijnenergie_get(self, url, timeout=30):
+        """Fetch MijnEnergie page and retry once after DPG privacy gate redirect."""
+        response = self.s.get(url, timeout=timeout, allow_redirects=True)
+        final_url = getattr(response, "url", url) or url
+
+        if "myprivacy.dpgmedia.be/consent" not in final_url:
+            return response
+
+        parsed = urllib.parse.urlparse(final_url)
+        callback_url = urllib.parse.parse_qs(parsed.query).get("callbackUrl", [""])[0]
+        if callback_url:
+            try:
+                self.s.get(callback_url, timeout=timeout, allow_redirects=True)
+            except requests.RequestException:
+                _LOGGER.debug("Privacy gate callback request failed for %s", url, exc_info=True)
+
+        return self.s.get(url, timeout=timeout, allow_redirects=True)
 
     def get_data(self, config, contract_type: ContractType):
         manual_results_url = config.get("manual_results_url", "")
@@ -405,13 +513,30 @@ class ComponentSession(object):
 
             if manual_results_url:
                 _LOGGER.debug(f"Using manual results URL: {manual_results_url}")
-                response = self.s.get(manual_results_url, timeout=30, allow_redirects=True)
+                response = self._mijnenergie_get(manual_results_url, timeout=30)
                 response.raise_for_status()
                 soup = BeautifulSoup(response.text, "html.parser")
                 parsed = _parse_new_results_cards(soup, manual_results_url, yearly_consumption, section_name)
                 if parsed:
                     result.update(parsed)
                     continue
+
+                linked_results_url = _extract_results_page_url(response.text, manual_results_url)
+                if linked_results_url and linked_results_url != manual_results_url:
+                    _LOGGER.debug("Following linked resultaten URL from manual page: %s", linked_results_url)
+                    linked_response = self._mijnenergie_get(linked_results_url, timeout=30)
+                    linked_response.raise_for_status()
+                    linked_soup = BeautifulSoup(linked_response.text, "html.parser")
+                    linked_parsed = _parse_new_results_cards(
+                        linked_soup,
+                        linked_results_url,
+                        yearly_consumption,
+                        section_name,
+                    )
+                    if linked_parsed:
+                        result.update(linked_parsed)
+                        continue
+
                 _LOGGER.warning(
                     "Manual results URL returned no parseable offers for %s, falling back to generated URL",
                     section_name,
@@ -420,13 +545,14 @@ class ComponentSession(object):
             myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={type_comp}&d={electricity_digital_counter_n}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C1-{electricity_injection}%7C{electricity_injection_night}%7C{solar_panels_n}%7C%7C0%21{contract_type.code}%21A%21n%7C0%21{contract_type.code}%21A%7C{combine_elec_and_gas_n}%7C{inverter_power}%7C%7C%7C%7C%7C%21%7C%7C{inverter_power}%7C%7C{electric_car_n}-{electricity_provider_n}%7C{gas_provider_n}-0"
             
             _LOGGER.debug(f"myenergy_url: {myenergy_url}")
-            response = self.s.get(myenergy_url,timeout=30,allow_redirects=True)
+            response = self._mijnenergie_get(myenergy_url, timeout=30)
             response.raise_for_status()
 
             if "NEXT_NOT_FOUND" in response.text or "Pagina niet gevonden" in response.text:
                 raise ComparisonUnavailableError(
                     "Generated comparison URL returned not found page. "
-                    "Automatic GUI mode is currently unsupported by MijnEnergie website."
+                    "Automatic GUI mode is currently unsupported by MijnEnergie website; "
+                    "configure manual_results_url with a valid resultaten/offers page URL."
                 )
             
             _LOGGER.debug("get result status code: " + str(response.status_code))

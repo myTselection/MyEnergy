@@ -11,6 +11,7 @@ from custom_components.myenergy.utils import (
     ComponentSession,
     ContractType,
     _build_simulation_payload,
+    _extract_results_page_url,
     check_settings,
     _build_section_name,
     _extract_euro_value,
@@ -96,6 +97,80 @@ def test_parse_new_results_cards_returns_empty_for_invalid_cards():
     )
 
     assert parsed == {}
+
+
+def test_parse_new_results_cards_parses_legacy_card_layout():
+    """Parser should handle legacy card-energy-details layout used on some result pages."""
+    html = """
+    <section id="RestultatElec">
+      <div class="card card-energy-details border border-light">
+        <div class="provider-logo-lg">
+          <img alt="Logo Mega" />
+        </div>
+        <li class="list-inline-item large-body-font-size text-strong mb-2 mb-sm-0">Legacy Flex</li>
+        <table>
+          <tr><th>Jaarlijkse kostprijs</th><td>€ 1.140,00</td></tr>
+        </table>
+      </div>
+    </section>
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    parsed = _parse_new_results_cards(
+        soup,
+        "https://example.com/results",
+        3800,
+        "Elektriciteit",
+    )
+
+    assert "Elektriciteit" in parsed
+    card = parsed["Elektriciteit"][0]
+    assert card["provider"] == "Mega"
+    assert card["name"] == "Legacy Flex"
+    assert card["Jaarlijkse kostprijs"] == [
+        "30.00 c€/kWh",
+        "3800 kWh/jaar",
+        "€ 1140.00/jaar",
+    ]
+
+
+def test_parse_new_results_cards_prefers_yearly_context_over_max_value():
+        """Annual selection should prioritize yearly-context value over unrelated larger amounts."""
+        html = """
+        <section>
+            <article>
+                <img alt="Logo Mega" />
+                <h3>Context Aware Plan</h3>
+                <p>Special bonus: € 2.500,00</p>
+                <p>Estimated yearly amount € 1.140,00</p>
+            </article>
+        </section>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+
+        parsed = _parse_new_results_cards(
+                soup,
+                "https://example.com/results",
+                3800,
+                "Elektriciteit",
+        )
+
+        assert "Elektriciteit" in parsed
+        card = parsed["Elektriciteit"][0]
+        assert card["Jaarlijkse kostprijs"] == [
+                "30.00 c€/kWh",
+                "3800 kWh/jaar",
+                "€ 1140.00/jaar",
+        ]
+
+
+def test_extract_results_page_url_finds_relative_link():
+    """Helper should find first resultaten link and resolve relative URLs."""
+    html = '<a href="/resultaten/abc-123">Bekijk resultaten</a>'
+    assert (
+        _extract_results_page_url(html, "https://www.mijnenergie.be/vergelijking/stap-2/xyz")
+        == "https://www.mijnenergie.be/resultaten/abc-123"
+    )
 
 
 @pytest.mark.asyncio
@@ -197,6 +272,160 @@ def test_manual_results_url_falls_back_to_generated_results_url():
 
     assert isinstance(result, dict)
     assert len(component_session.s.calls) == 2
+
+
+def test_manual_results_url_follows_linked_results_page():
+    """Step-like manual page should follow embedded resultaten URL before fallback."""
+    config = {
+        "manual_results_url": "https://example.com/manual-step",
+        "postalcode": "1000",
+        "electricity_digital_counter": False,
+        "day_electricity_consumption": 3800,
+        "night_electricity_consumption": 0,
+        "excl_night_electricity_consumption": 0,
+        "solar_panels": False,
+        "electricity_injection": 0,
+        "electricity_injection_night": 0,
+        "electricity_provider": "No provider",
+        "inverter_power": 0,
+        "combine_elec_and_gas": False,
+        "gas_consumption": 0,
+        "gas_provider": "No provider",
+        "directdebit_invoice": True,
+        "email_invoice": True,
+        "online_support": True,
+        "electric_car": False,
+    }
+
+    class _Response:
+        def __init__(self, text, status_code=200, url=""):
+            self.text = text
+            self.status_code = status_code
+            self.url = url
+
+        def raise_for_status(self):
+            return None
+
+    class _FakeSession:
+        def __init__(self):
+            self.calls = []
+
+        def get(self, url, timeout=30, allow_redirects=True):
+            self.calls.append(url)
+            if url == "https://example.com/manual-step":
+                return _Response(
+                    '<html><body><a href="https://example.com/resultaten/abc">Open</a></body></html>',
+                    url=url,
+                )
+
+            if url == "https://example.com/resultaten/abc":
+                return _Response(
+                    """
+                    <section>
+                      <article>
+                        <img alt=\"Logo Mega\" />
+                        <h3>Smart Flex</h3>
+                        <p>€ 95,00 / maand</p>
+                        <p>€ 1.140,00 / jaar</p>
+                      </article>
+                    </section>
+                    """,
+                    url=url,
+                )
+
+            return _Response("", url=url)
+
+    component_session = ComponentSession()
+    component_session.s = _FakeSession()
+
+    result = component_session.get_data(config, ContractType.FIXED)
+
+    assert "Elektriciteit" in result
+    assert component_session.s.calls == [
+        "https://example.com/manual-step",
+        "https://example.com/resultaten/abc",
+    ]
+
+
+def test_manual_results_url_retries_after_privacy_gate_redirect():
+    """When redirected to DPG consent, scraper should call callback and retry URL."""
+    config = {
+        "manual_results_url": "https://example.com/manual",
+        "postalcode": "1000",
+        "electricity_digital_counter": False,
+        "day_electricity_consumption": 3800,
+        "night_electricity_consumption": 0,
+        "excl_night_electricity_consumption": 0,
+        "solar_panels": False,
+        "electricity_injection": 0,
+        "electricity_injection_night": 0,
+        "electricity_provider": "No provider",
+        "inverter_power": 0,
+        "combine_elec_and_gas": False,
+        "gas_consumption": 0,
+        "gas_provider": "No provider",
+        "directdebit_invoice": True,
+        "email_invoice": True,
+        "online_support": True,
+        "electric_car": False,
+    }
+
+    privacy_redirect_url = (
+        "https://myprivacy.dpgmedia.be/consent?siteKey=x&callbackUrl="
+        "https%3A%2F%2Fwww.mijnenergie.be%2Fprivacygate-confirm%3FredirectUri%3D%252Fmanual"
+    )
+
+    class _Response:
+        def __init__(self, text, status_code=200, url=""):
+            self.text = text
+            self.status_code = status_code
+            self.url = url
+
+        def raise_for_status(self):
+            return None
+
+    class _FakeSession:
+        def __init__(self):
+            self.calls = []
+            self._manual_count = 0
+
+        def get(self, url, timeout=30, allow_redirects=True):
+            self.calls.append(url)
+
+            if url == "https://example.com/manual":
+                self._manual_count += 1
+                if self._manual_count == 1:
+                    return _Response("consent", url=privacy_redirect_url)
+                return _Response(
+                    """
+                    <section>
+                      <article>
+                        <img alt=\"Logo Mega\" />
+                        <h3>Smart Flex</h3>
+                        <p>€ 95,00 / maand</p>
+                        <p>€ 1.140,00 / jaar</p>
+                      </article>
+                    </section>
+                    """,
+                    url=url,
+                )
+
+            if url == "https://www.mijnenergie.be/privacygate-confirm?redirectUri=%2Fmanual":
+                return _Response("ok", url=url)
+
+            return _Response("", url=url)
+
+    component_session = ComponentSession()
+    component_session.s = _FakeSession()
+
+    result = component_session.get_data(config, ContractType.FIXED)
+
+    assert "Elektriciteit" in result
+    assert component_session.s.calls == [
+        "https://example.com/manual",
+        "https://www.mijnenergie.be/privacygate-confirm?redirectUri=%2Fmanual",
+        "https://example.com/manual",
+    ]
 
 
 def test_validate_manual_results_url_rejects_step_url():
