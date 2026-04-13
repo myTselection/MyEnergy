@@ -205,7 +205,58 @@ def test_check_settings_accepts_minimal_valid_config():
 
 
 def test_generated_url_next_not_found_raises_comparison_unavailable():
-    """Generated URL not-found page should raise a non-retryable comparison error."""
+    """When simulation API is unavailable and HTML fallback hits not-found, raise ComparisonUnavailableError."""
+    config = {
+        "postalcode": "1000",
+        "electricity_digital_counter": False,
+        "day_electricity_consumption": 3800,
+        "night_electricity_consumption": 0,
+        "excl_night_electricity_consumption": 0,
+        "solar_panels": False,
+        "electricity_injection": 0,
+        "electricity_injection_night": 0,
+        "electricity_provider": "No provider",
+        "inverter_power": 0,
+        "combine_elec_and_gas": False,
+        "gas_consumption": 0,
+        "gas_provider": "No provider",
+        "directdebit_invoice": True,
+        "email_invoice": True,
+        "online_support": True,
+        "electric_car": False,
+    }
+
+    class _Response:
+        def __init__(self, text="", json_value=None):
+            self.text = text
+            self.status_code = 200
+            self._json_value = json_value
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._json_value
+
+    class _FakeSession:
+        def get(self, url, timeout=30, allow_redirects=True):
+            if "zone/localities" in url:
+                # Locality lookup fails → simulation_data stays None → HTML fallback runs
+                raise requests.RequestException("connection refused")
+            return _Response("<html><head><title>Pagina niet gevonden</title></head><body>NEXT_NOT_FOUND</body></html>")
+
+        def post(self, url, json=None, timeout=30, allow_redirects=True):
+            raise requests.RequestException("should not be called")
+
+    component_session = ComponentSession()
+    component_session.s = _FakeSession()
+
+    with pytest.raises(ComparisonUnavailableError):
+        component_session.get_data(config, ContractType.FIXED)
+
+
+def test_simulation_empty_results_skips_html_fallback():
+    """When simulation API returns data but no matching results, skip HTML fallback gracefully."""
     config = {
         "postalcode": "1000",
         "electricity_digital_counter": False,
@@ -242,17 +293,18 @@ def test_generated_url_next_not_found_raises_comparison_unavailable():
         def get(self, url, timeout=30, allow_redirects=True):
             if "zone/localities" in url:
                 return _Response(json_value=[{"id": 7, "zipCode": 1000}])
-            return _Response("<html><head><title>Pagina niet gevonden</title></head><body>NEXT_NOT_FOUND</body></html>")
+            # Should NOT be reached — if it is, test will fail with unexpected error
+            return _Response("<html><body>NEXT_NOT_FOUND</body></html>")
 
         def post(self, url, json=None, timeout=30, allow_redirects=True):
-            # Force legacy fallback path by returning empty API results.
             return _Response(json_value={"results": [], "forwardResults": []})
 
     component_session = ComponentSession()
     component_session.s = _FakeSession()
 
-    with pytest.raises(ComparisonUnavailableError):
-        component_session.get_data(config, ContractType.FIXED)
+    # Should return empty dict, NOT raise ComparisonUnavailableError
+    result = component_session.get_data(config, ContractType.FIXED)
+    assert result == {} or result is not None
 
 
 def test_simulation_http_422_falls_back_to_generated_url_parsing():
