@@ -171,12 +171,29 @@ class ComponentData:
             if self._session:
                 _LOGGER.debug("Getting data for " + NAME)
                 try:
-                    self._details[contract_type.code] = await self._hass.async_add_executor_job(lambda: self._session.get_data(self._config, contract_type))
-                    self._refresh_retry = 0
-                    self._refresh_required = False
+                    contract_details = await self._hass.async_add_executor_job(
+                        lambda: self._session.get_data(self._config, contract_type)
+                    )
+                    if contract_details is None:
+                        contract_details = {}
+
+                    # Always keep per-contract key to avoid noisy "missing contract" warnings downstream.
+                    self._details[contract_type.code] = contract_details
+
+                    if contract_details:
+                        self._refresh_retry = 0
+                        self._refresh_required = False
+                    else:
+                        _LOGGER.warning(
+                            "%s no data parsed for contract type %s",
+                            NAME,
+                            contract_type.code,
+                        )
+                        self._refresh_required = True
                 except Exception as e:
                     # Log the exception details
                     _LOGGER.warning(f"An exception occurred, will retry: {str(e)}", exc_info=True)
+                    self._details[contract_type.code] = self._details.get(contract_type.code, {})
                     self._refresh_required = True
                 _LOGGER.debug("Data fetched completed " + NAME)
             else:
@@ -233,6 +250,9 @@ class ComponentSensor(Entity):
         # _LOGGER.debug(f"self._contract_type_details: {self._contract_type_details}")
         if self._contract_type_details == None:
             _LOGGER.warning(f"{NAME} requested contract type {self._contract_type.code} not found, available data: {self._details}")
+            return
+        if not self._contract_type_details:
+            _LOGGER.debug("%s no parsed entries for contract type %s", NAME, self._contract_type.code)
             return
         for fueltype_name in self._contract_type_details.keys():
             if self._fuel_type.fullnameNL in fueltype_name:

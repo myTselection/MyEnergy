@@ -224,11 +224,17 @@ class ComponentSession(object):
             for section_id in section_ids:
                 _LOGGER.debug(f"section_id {section_id}")
                 section =  soup.find(id=section_id)
-                # if section == None:
-                    # continue
+                if section is None:
+                    _LOGGER.debug("Section %s not found in page", section_id)
+                    continue
 
                 # sectionName = section.find("caption", class_="sr-only").text
-                sectionName = section.find("h3", class_="h4 text-strong").text
+                header = section.find("h3", class_="h4 text-strong")
+                if header is None:
+                    _LOGGER.debug("Section %s missing expected heading", section_id)
+                    continue
+
+                sectionName = header.text
                 sectionName = sectionName.replace('Resultaten ','').title()
                 # providerdetails = section.find_all('tr', class_='cleantable_overview_row')
                 # non_ad_section = section.find_all('div', class_='card card-energy-details border border-light')
@@ -239,11 +245,21 @@ class ComponentSession(object):
                     providerdetails = non_ad_section
                 providerdetails_array = []
                 for providerdetail in providerdetails:
-                    providerdetails_name = providerdetail.find('li', class_='list-inline-item large-body-font-size text-strong mb-2 mb-sm-0').text
+                    name_el = providerdetail.find('li', class_='list-inline-item large-body-font-size text-strong mb-2 mb-sm-0')
+                    if name_el is None:
+                        continue
+
+                    providerdetails_name = name_el.text
                     providerdetails_name = providerdetails_name.replace('\n', '')
 
                     # Find the <img> element within the specified <div> by class name
-                    img_element = providerdetail.find('div', class_='provider-logo-lg').find('img')
+                    provider_logo_container = providerdetail.find('div', class_='provider-logo-lg')
+                    if provider_logo_container is None:
+                        continue
+
+                    img_element = provider_logo_container.find('img')
+                    if img_element is None or not img_element.get('alt'):
+                        continue
 
                     # Extract the 'alt' attribute, which contains the provider name
                     provider_name = img_element['alt']
@@ -280,7 +296,8 @@ class ComponentSession(object):
                     providerdetails_array.append(json_data)
                     #only first restult is needed, if all details are required, remove the break below
                     break
-                result[sectionName] = providerdetails_array
+                if providerdetails_array:
+                    result[sectionName] = providerdetails_array
 
             # Fallback parser for the new resultaten page layout.
             if section_name not in result:
