@@ -368,8 +368,24 @@ class ComponentSession(object):
                     timeout=30,
                     allow_redirects=True,
                 )
-                simulation_response.raise_for_status()
-                simulation_data = simulation_response.json()
+                try:
+                    simulation_response.raise_for_status()
+                    simulation_data = simulation_response.json()
+                except requests.exceptions.HTTPError as err:
+                    # 422 means payload rejected by API validation. Keep flow alive and fallback
+                    # to generated/manual results parsing instead of failing whole refresh.
+                    if simulation_response.status_code == 422:
+                        response_text = simulation_response.text or ""
+                        response_snippet = response_text[:500]
+                        _LOGGER.warning(
+                            "Simulation API rejected payload with HTTP 422. Falling back to HTML parsing. "
+                            "payload=%s response=%s",
+                            simulation_payload,
+                            response_snippet,
+                        )
+                        simulation_data = None
+                    else:
+                        raise err
 
         for type_comp in types_comp:
             section_name = _build_section_name(type_comp)

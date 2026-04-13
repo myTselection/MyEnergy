@@ -1,6 +1,7 @@
 """Tests for MyEnergy parsing and data refresh behavior."""
 
 import pytest
+import requests
 from bs4 import BeautifulSoup
 import voluptuous as vol
 
@@ -276,6 +277,79 @@ def test_generated_url_next_not_found_raises_comparison_unavailable():
 
     with pytest.raises(ComparisonUnavailableError):
         component_session.get_data(config, ContractType.FIXED)
+
+
+def test_simulation_http_422_falls_back_to_generated_url_parsing():
+    """Simulation API validation errors should not break generated URL fallback."""
+    config = {
+        "postalcode": "1000",
+        "electricity_digital_counter": False,
+        "day_electricity_consumption": 3800,
+        "night_electricity_consumption": 0,
+        "excl_night_electricity_consumption": 0,
+        "solar_panels": False,
+        "electricity_injection": 0,
+        "electricity_injection_night": 0,
+        "electricity_provider": "No provider",
+        "inverter_power": 0,
+        "combine_elec_and_gas": False,
+        "gas_consumption": 0,
+        "gas_provider": "No provider",
+        "directdebit_invoice": True,
+        "email_invoice": True,
+        "online_support": True,
+        "electric_car": False,
+    }
+
+    class _Response:
+        def __init__(self, text="", json_value=None, status_code=200):
+            self.text = text
+            self.status_code = status_code
+            self._json_value = json_value
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.exceptions.HTTPError(
+                    f"{self.status_code} error", response=self
+                )
+            return None
+
+        def json(self):
+            return self._json_value
+
+    class _FakeSession:
+        def get(self, url, timeout=30, allow_redirects=True):
+            if "zone/localities" in url:
+                return _Response(json_value=[{"id": 7, "zipCode": 1000}])
+            return _Response(
+                text="""
+                <section>
+                  <article>
+                    <img alt=\"Logo Mega\" />
+                    <h3>Smart Flex</h3>
+                    <p>€ 95,00 / maand</p>
+                    <p>€ 1.140,00 / jaar</p>
+                  </article>
+                </section>
+                """
+            )
+
+        def post(self, url, json=None, timeout=30, allow_redirects=True):
+            return _Response(
+                text='{"message":"validation failed"}',
+                json_value={"message": "validation failed"},
+                status_code=422,
+            )
+
+    component_session = ComponentSession()
+    component_session.s = _FakeSession()
+
+    result = component_session.get_data(config, ContractType.FIXED)
+
+    assert "Elektriciteit" in result
+    offer = result["Elektriciteit"][0]
+    assert offer["provider"] == "Mega"
+    assert offer["name"] == "Smart Flex"
 
 
 def test_build_simulation_payload_mono_without_gas_or_solar():
