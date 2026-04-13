@@ -56,11 +56,9 @@ Device `MyEnergy` should become available with the following sensors:
 
 ### Updated website compatibility note
 
-The mijnenergie.be website was recently redesigned. The integration now includes parsing support for the new results layout, and also exposes an optional configuration field:
+The integration now runs fully from the GUI input values (postal code, consumption profile, meter and provider preferences), then queries MijnEnergie and parses the returned offers.
 
-- `manual_results_url` (optional): direct URL to a MijnEnergie results page (for example `https://www.mijnenergie.be/resultaten/<uuid>`)
-
-When this value is set, the integration will fetch and parse that results page directly. This is currently the most reliable path while full end-to-end automation of the new multi-step flow is still being improved.
+The parsed GUI input profile is also exposed in the sensor attributes (`input profile`) so automations and templates can inspect the exact scenario used for each created sensor entity.
 
 ## Status
 

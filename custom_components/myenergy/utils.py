@@ -29,23 +29,6 @@ class ComparisonUnavailableError(Exception):
     """Raised when MijnEnergie no longer serves comparison results for generated URL."""
 
 
-def validate_manual_results_url(manual_results_url):
-    if not manual_results_url:
-        return True
-
-    parsed_url = urllib.parse.urlparse(manual_results_url)
-    if parsed_url.scheme not in ("http", "https"):
-        raise vol.Invalid("manual_results_url must be a valid http(s) URL.")
-
-    # Step URLs are input pages. They do not contain offer cards that parser needs.
-    if re.search(r"/vergelijking/stap-\d+(?:/|$)", parsed_url.path):
-        raise vol.Invalid(
-            "manual_results_url points to a vergelijking step page. Use a resultaten/offers URL instead."
-        )
-
-    return True
-
-
 def _extract_euro_value(text):
     if not text:
         return None
@@ -200,19 +183,76 @@ def _to_float(value, default=0.0):
         return default
 
 
-def _build_simulation_payload(config, locality):
-    day_electricity_consumption = config.get("day_electricity_consumption", 0)
-    night_electricity_consumption = config.get("night_electricity_consumption", 0)
-    excl_night_electricity_consumption = config.get("excl_night_electricity_consumption", 0)
-    electricity_injection = config.get("electricity_injection", 0)
-    electricity_injection_night = config.get("electricity_injection_night", 0)
-    gas_consumption = config.get("gas_consumption", 0)
+def normalize_input_config(config):
+    """Normalize GUI input values so downstream payload/parsers use consistent types."""
+    day_electricity_consumption = int(config.get("day_electricity_consumption", 0) or 0)
+    night_electricity_consumption = int(config.get("night_electricity_consumption", 0) or 0)
+    excl_night_electricity_consumption = int(config.get("excl_night_electricity_consumption", 0) or 0)
+    electricity_injection = int(config.get("electricity_injection", 0) or 0)
+    electricity_injection_night = int(config.get("electricity_injection_night", 0) or 0)
+    gas_consumption = int(config.get("gas_consumption", 0) or 0)
+    inverter_power = int(config.get("inverter_power", 0) or 0)
 
-    electricity_comp = day_electricity_consumption != 0 or night_electricity_consumption != 0 or excl_night_electricity_consumption != 0
-    gas_comp = gas_consumption != 0
+    electricity_provider = config.get("electricity_provider", "No provider")
+    gas_provider = config.get("gas_provider", "No provider")
 
     meter_type = "MONO" if night_electricity_consumption == 0 and excl_night_electricity_consumption == 0 else "BI"
-    solar_panels = config.get("solar_panels", False)
+    electricity_comp = (
+        day_electricity_consumption != 0
+        or night_electricity_consumption != 0
+        or excl_night_electricity_consumption != 0
+    )
+    gas_comp = gas_consumption != 0
+
+    elec_level = 0
+    if night_electricity_consumption != 0:
+        elec_level += 1
+    if excl_night_electricity_consumption != 0:
+        elec_level += 1
+
+    normalized = {
+        "postalcode": str(config.get("postalcode", "")),
+        "electricity_digital_counter": bool(config.get("electricity_digital_counter", False)),
+        "day_electricity_consumption": day_electricity_consumption,
+        "night_electricity_consumption": night_electricity_consumption,
+        "excl_night_electricity_consumption": excl_night_electricity_consumption,
+        "solar_panels": bool(config.get("solar_panels", False)),
+        "electricity_injection": electricity_injection,
+        "electricity_injection_night": electricity_injection_night,
+        "inverter_power": inverter_power,
+        "electricity_provider": electricity_provider,
+        "gas_consumption": gas_consumption,
+        "gas_provider": gas_provider,
+        "combine_elec_and_gas": bool(config.get("combine_elec_and_gas", False)),
+        "directdebit_invoice": bool(config.get("directdebit_invoice", True)),
+        "email_invoice": bool(config.get("email_invoice", True)),
+        "online_support": bool(config.get("online_support", True)),
+        "electric_car": bool(config.get("electric_car", False)),
+        "electricity_comp": electricity_comp,
+        "gas_comp": gas_comp,
+        "meter_type": meter_type,
+        "elec_level": elec_level,
+        "electricity_provider_id": providers.get(electricity_provider, "0"),
+        "gas_provider_id": providers.get(gas_provider, "0"),
+    }
+
+    return normalized
+
+
+def _build_simulation_payload(config, locality):
+    parsed = normalize_input_config(config)
+    day_electricity_consumption = parsed["day_electricity_consumption"]
+    night_electricity_consumption = parsed["night_electricity_consumption"]
+    excl_night_electricity_consumption = parsed["excl_night_electricity_consumption"]
+    electricity_injection = parsed["electricity_injection"]
+    electricity_injection_night = parsed["electricity_injection_night"]
+    gas_consumption = parsed["gas_consumption"]
+
+    electricity_comp = parsed["electricity_comp"]
+    gas_comp = parsed["gas_comp"]
+
+    meter_type = parsed["meter_type"]
+    solar_panels = parsed["solar_panels"]
 
     payload = {
         "site": "www.mijnenergie.be",
@@ -231,9 +271,9 @@ def _build_simulation_payload(config, locality):
         "fillingOption": "manual",
         "meterType": meter_type,
         "exclusiveNightMeter": excl_night_electricity_consumption > 0,
-        "digitalMeter": config.get("electricity_digital_counter", False),
+        "digitalMeter": parsed["electricity_digital_counter"],
         "solarPanels": solar_panels,
-        "electricVehicle": config.get("electric_car", False),
+        "electricVehicle": parsed["electric_car"],
     }
 
     if electricity_comp:
@@ -368,8 +408,6 @@ def check_settings(config, hass):
     if not any(config.get(i) for i in ["postalcode"]):
         _LOGGER.error("postalcode was not set")
         raise vol.Invalid("Missing settings to setup the sensor.")
-
-    validate_manual_results_url(config.get("manual_results_url", ""))
     return True
         
 
@@ -398,44 +436,33 @@ class ComponentSession(object):
         return self.s.get(url, timeout=timeout, allow_redirects=True)
 
     def get_data(self, config, contract_type: ContractType):
-        manual_results_url = config.get("manual_results_url", "")
-        postalcode = config.get("postalcode")
-        electricity_digital_counter = config.get("electricity_digital_counter", False)
-        electricity_digital_counter_n = 1 if electricity_digital_counter == True else 0
-        day_electricity_consumption = config.get("day_electricity_consumption",0)
-        night_electricity_consumption = config.get("night_electricity_consumption", 0)
-        excl_night_electricity_consumption = config.get("excl_night_electricity_consumption", 0)
+        parsed = normalize_input_config(config)
+        postalcode = parsed["postalcode"]
+        electricity_digital_counter_n = 1 if parsed["electricity_digital_counter"] else 0
+        day_electricity_consumption = parsed["day_electricity_consumption"]
+        night_electricity_consumption = parsed["night_electricity_consumption"]
+        excl_night_electricity_consumption = parsed["excl_night_electricity_consumption"]
 
-        solar_panels = config.get("solar_panels", False)
-        solar_panels_n = 1 if solar_panels == True else 0
-        electricity_injection = config.get("electricity_injection", 0)
-        electricity_injection_night = config.get("electricity_injection_night", 0)
+        solar_panels_n = 1 if parsed["solar_panels"] else 0
+        electricity_injection = parsed["electricity_injection"]
+        electricity_injection_night = parsed["electricity_injection_night"]
 
-        electricity_provider = config.get("electricity_provider", "No provider")
-        electricity_provider_n = providers.get(electricity_provider,0)
+        electricity_provider_n = parsed["electricity_provider_id"]
 
-        inverter_power = config.get("inverter_power", 0)
-        inverter_power = str(inverter_power).replace(',','%2C').replace('.','%2C')
+        inverter_power = str(parsed["inverter_power"]).replace(',', '%2C').replace('.', '%2C')
 
-        combine_elec_and_gas = config.get("combine_elec_and_gas", False)     
-        combine_elec_and_gas_n = 1 if combine_elec_and_gas == True else 0   
-        
-        gas_consumption = config.get("gas_consumption", 0)
-        
-        gas_provider = config.get("gas_provider", "No provider")
-        gas_provider_n = providers.get(gas_provider,0)
+        combine_elec_and_gas_n = 1 if parsed["combine_elec_and_gas"] else 0
 
-        directdebit_invoice = config.get("directdebit_invoice", True)
-        directdebit_invoice_n = 1 if directdebit_invoice == True else 0
-        email_invoice = config.get("email_invoice", True)
-        email_invoice_n = 1 if email_invoice == True else 0
-        online_support = config.get("online_support", True)
-        online_support_n = 1 if online_support == True else 0
-        electric_car = config.get("electric_car", False)
-        electric_car_n = 1 if electric_car == True else 0
+        gas_consumption = parsed["gas_consumption"]
+        gas_provider_n = parsed["gas_provider_id"]
 
-        electricity_comp = day_electricity_consumption != 0 or night_electricity_consumption != 0 or excl_night_electricity_consumption != 0
-        gas_comp = gas_consumption != 0
+        directdebit_invoice_n = 1 if parsed["directdebit_invoice"] else 0
+        email_invoice_n = 1 if parsed["email_invoice"] else 0
+        online_support_n = 1 if parsed["online_support"] else 0
+        electric_car_n = 1 if parsed["electric_car"] else 0
+
+        electricity_comp = parsed["electricity_comp"]
+        gas_comp = parsed["gas_comp"]
 
         types_comp = []
         if electricity_comp: 
@@ -443,57 +470,58 @@ class ComponentSession(object):
         if gas_comp:
             types_comp.append("aardgas")
     
-        elec_level = 0
-        if night_electricity_consumption != 0:
-            elec_level += 1
-        if excl_night_electricity_consumption !=0:
-            elec_level += 1
+        elec_level = parsed["elec_level"]
 
         result = {}
 
         simulation_data = None
-        if not manual_results_url:
+        locality = None
+        try:
             locality_response = self.s.get(
                 f"https://api.comparateur.be/zone/localities?zipCode={postalcode}",
                 timeout=30,
                 allow_redirects=True,
             )
             locality_response.raise_for_status()
-            localities = locality_response.json()
-            locality = None
+            localities = locality_response.json() or []
             for candidate in localities:
                 if str(candidate.get("zipCode")) == str(postalcode):
                     locality = candidate
                     break
             if locality is None and localities:
                 locality = localities[0]
+        except requests.RequestException as err:
+            _LOGGER.warning(
+                "Locality lookup failed, skipping simulation API and falling back to HTML parsing. error=%s",
+                err,
+            )
 
-            if locality is not None:
-                simulation_payload = _build_simulation_payload(config, locality)
-                simulation_response = self.s.post(
-                    "https://api.comparateur.be/energy/comparison/simulation",
-                    json=simulation_payload,
-                    timeout=30,
-                    allow_redirects=True,
-                )
-                try:
-                    simulation_response.raise_for_status()
-                    simulation_data = simulation_response.json()
-                except requests.exceptions.HTTPError as err:
-                    # 422 means payload rejected by API validation. Keep flow alive and fallback
-                    # to generated/manual results parsing instead of failing whole refresh.
-                    if simulation_response.status_code == 422:
-                        response_text = simulation_response.text or ""
-                        response_snippet = response_text[:500]
-                        _LOGGER.warning(
-                            "Simulation API rejected payload with HTTP 422. Falling back to HTML parsing. "
-                            "payload=%s response=%s",
-                            simulation_payload,
-                            response_snippet,
-                        )
-                        simulation_data = None
-                    else:
-                        raise err
+        if locality is not None:
+            simulation_payload = _build_simulation_payload(config, locality)
+            simulation_response = self.s.post(
+                "https://api.comparateur.be/energy/comparison/simulation",
+                json=simulation_payload,
+                timeout=30,
+                allow_redirects=True,
+            )
+            try:
+                simulation_response.raise_for_status()
+                simulation_data = simulation_response.json()
+            except requests.exceptions.HTTPError as err:
+                # 422 means payload rejected by API validation. Keep flow alive and fallback
+                # to generated results parsing instead of failing whole refresh.
+                if simulation_response.status_code == 422:
+                    response_text = simulation_response.text or ""
+                    response_snippet = response_text[:500]
+                    _LOGGER.warning(
+                        "Simulation API rejected payload with HTTP 422. Falling back to HTML parsing. "
+                        "payload=%s response=%s",
+                        simulation_payload,
+                        response_snippet,
+                    )
+                    simulation_data = None
+                else:
+                    raise err
 
         for type_comp in types_comp:
             section_name = _build_section_name(type_comp)
@@ -511,37 +539,6 @@ class ComponentSession(object):
                     result.update(parsed)
                     continue
 
-            if manual_results_url:
-                _LOGGER.debug(f"Using manual results URL: {manual_results_url}")
-                response = self._mijnenergie_get(manual_results_url, timeout=30)
-                response.raise_for_status()
-                soup = BeautifulSoup(response.text, "html.parser")
-                parsed = _parse_new_results_cards(soup, manual_results_url, yearly_consumption, section_name)
-                if parsed:
-                    result.update(parsed)
-                    continue
-
-                linked_results_url = _extract_results_page_url(response.text, manual_results_url)
-                if linked_results_url and linked_results_url != manual_results_url:
-                    _LOGGER.debug("Following linked resultaten URL from manual page: %s", linked_results_url)
-                    linked_response = self._mijnenergie_get(linked_results_url, timeout=30)
-                    linked_response.raise_for_status()
-                    linked_soup = BeautifulSoup(linked_response.text, "html.parser")
-                    linked_parsed = _parse_new_results_cards(
-                        linked_soup,
-                        linked_results_url,
-                        yearly_consumption,
-                        section_name,
-                    )
-                    if linked_parsed:
-                        result.update(linked_parsed)
-                        continue
-
-                _LOGGER.warning(
-                    "Manual results URL returned no parseable offers for %s, falling back to generated URL",
-                    section_name,
-                )
-
             myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={type_comp}&d={electricity_digital_counter_n}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C1-{electricity_injection}%7C{electricity_injection_night}%7C{solar_panels_n}%7C%7C0%21{contract_type.code}%21A%21n%7C0%21{contract_type.code}%21A%7C{combine_elec_and_gas_n}%7C{inverter_power}%7C%7C%7C%7C%7C%21%7C%7C{inverter_power}%7C%7C{electric_car_n}-{electricity_provider_n}%7C{gas_provider_n}-0"
             
             _LOGGER.debug(f"myenergy_url: {myenergy_url}")
@@ -551,8 +548,7 @@ class ComponentSession(object):
             if "NEXT_NOT_FOUND" in response.text or "Pagina niet gevonden" in response.text:
                 raise ComparisonUnavailableError(
                     "Generated comparison URL returned not found page. "
-                    "Automatic GUI mode is currently unsupported by MijnEnergie website; "
-                    "configure manual_results_url with a valid resultaten/offers page URL."
+                    "Automatic GUI mode is currently unsupported by MijnEnergie website."
                 )
             
             _LOGGER.debug("get result status code: " + str(response.status_code))

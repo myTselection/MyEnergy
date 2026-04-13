@@ -22,8 +22,7 @@
           "directdebit_invoice": "Mandatory payment of invoice by direct debit",
           "email_invoice": "Send invoice only via e-mail",
           "online_support": "Customer service access only via email/internet",
-          "add_details": "Add extended product and price details as json",
-          "manual_results_url": "Optional MijnEnergie resultaten URL override"
+          "add_details": "Add extended product and price details as json"
         }
       },
       "edit": {
@@ -46,15 +45,13 @@
           "directdebit_invoice": "Mandatory payment of invoice by direct debit",
           "email_invoice": "Send invoice only via e-mail",
           "online_support": "Customer service access only via email/internet",
-          "add_details": "Add extended product and price details as json",
-          "manual_results_url": "Optional MijnEnergie resultaten URL override"
+          "add_details": "Add extended product and price details as json"
         }
       }
     },
     "error": {
       "missing data options handler": "Option handler failed",
-      "no_valid_settings": "No valid settings check in ha config.",
-      "invalid_manual_results_url": "Manual resultaten URL cannot be a /vergelijking/stap-* page. Use the final offers/results page URL."
+      "no_valid_settings": "No valid settings check in ha config."
     }
   },
   "options": {
@@ -79,15 +76,13 @@
           "directdebit_invoice": "Mandatory payment of invoice by direct debit",
           "email_invoice": "Send invoice only via e-mail",
           "online_support": "Customer service access only via email/internet",
-          "add_details": "Add extended product and price details as json",
-          "manual_results_url": "Optional MijnEnergie resultaten URL override"
+          "add_details": "Add extended product and price details as json"
         }
       }
     },
     "error": {
       "missing data options handler": "Option handler failed",
-      "no_valid_settings": "No valid settings check in ha config.",
-      "invalid_manual_results_url": "Manual resultaten URL cannot be a /vergelijking/stap-* page. Use the final offers/results page URL."
+      "no_valid_settings": "No valid settings check in ha config."
     }
   }
 }

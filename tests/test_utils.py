@@ -3,7 +3,6 @@
 import pytest
 import requests
 from bs4 import BeautifulSoup
-import voluptuous as vol
 
 from custom_components.myenergy.sensor import ComponentData
 from custom_components.myenergy.utils import (
@@ -11,13 +10,11 @@ from custom_components.myenergy.utils import (
     ComponentSession,
     ContractType,
     _build_simulation_payload,
-    _extract_results_page_url,
     check_settings,
     _build_section_name,
     _extract_euro_value,
     _parse_simulation_results,
     _parse_new_results_cards,
-    validate_manual_results_url,
 )
 
 
@@ -164,15 +161,6 @@ def test_parse_new_results_cards_prefers_yearly_context_over_max_value():
         ]
 
 
-def test_extract_results_page_url_finds_relative_link():
-    """Helper should find first resultaten link and resolve relative URLs."""
-    html = '<a href="/resultaten/abc-123">Bekijk resultaten</a>'
-    assert (
-        _extract_results_page_url(html, "https://www.mijnenergie.be/vergelijking/stap-2/xyz")
-        == "https://www.mijnenergie.be/resultaten/abc-123"
-    )
-
-
 @pytest.mark.asyncio
 async def test_component_data_keeps_contract_keys_for_empty_results(hass):
     """Refresh should keep F/V keys even when parser returns no data."""
@@ -210,251 +198,10 @@ async def test_component_data_keeps_contract_keys_for_empty_results(hass):
     assert component_data._refresh_required is True
 
 
-def test_manual_results_url_falls_back_to_generated_results_url():
-    """Session should fallback when manual URL has no parseable offer cards."""
-    config = {
-        "manual_results_url": "https://example.com/manual",
-        "postalcode": "1000",
-        "electricity_digital_counter": False,
-        "day_electricity_consumption": 3800,
-        "night_electricity_consumption": 0,
-        "excl_night_electricity_consumption": 0,
-        "solar_panels": False,
-        "electricity_injection": 0,
-        "electricity_injection_night": 0,
-        "electricity_provider": "No provider",
-        "inverter_power": 0,
-        "combine_elec_and_gas": False,
-        "gas_consumption": 0,
-        "gas_provider": "No provider",
-        "directdebit_invoice": True,
-        "email_invoice": True,
-        "online_support": True,
-        "electric_car": False,
-    }
-
-    class _Response:
-        def __init__(self, text):
-            self.text = text
-            self.status_code = 200
-
-        def raise_for_status(self):
-            return None
-
-    class _FakeSession:
-        def __init__(self):
-            self.calls = []
-
-        def get(self, url, timeout=30, allow_redirects=True):
-            self.calls.append(url)
-            if url == "https://example.com/manual":
-                # No article cards in manual page -> forces fallback.
-                return _Response("<html><body><h1>Step page</h1></body></html>")
-
-            # Generated URL response with valid article card.
-            return _Response(
-                """
-                <section>
-                  <article>
-                    <img alt=\"Logo Mega\" />
-                    <h3>Smart Flex</h3>
-                    <p>€ 95,00 / maand</p>
-                    <p>€ 1.140,00 / jaar</p>
-                  </article>
-                </section>
-                """
-            )
-
-    component_session = ComponentSession()
-    component_session.s = _FakeSession()
-
-    result = component_session.get_data(config, ContractType.FIXED)
-
-    assert isinstance(result, dict)
-    assert len(component_session.s.calls) == 2
-
-
-def test_manual_results_url_follows_linked_results_page():
-    """Step-like manual page should follow embedded resultaten URL before fallback."""
-    config = {
-        "manual_results_url": "https://example.com/manual-step",
-        "postalcode": "1000",
-        "electricity_digital_counter": False,
-        "day_electricity_consumption": 3800,
-        "night_electricity_consumption": 0,
-        "excl_night_electricity_consumption": 0,
-        "solar_panels": False,
-        "electricity_injection": 0,
-        "electricity_injection_night": 0,
-        "electricity_provider": "No provider",
-        "inverter_power": 0,
-        "combine_elec_and_gas": False,
-        "gas_consumption": 0,
-        "gas_provider": "No provider",
-        "directdebit_invoice": True,
-        "email_invoice": True,
-        "online_support": True,
-        "electric_car": False,
-    }
-
-    class _Response:
-        def __init__(self, text, status_code=200, url=""):
-            self.text = text
-            self.status_code = status_code
-            self.url = url
-
-        def raise_for_status(self):
-            return None
-
-    class _FakeSession:
-        def __init__(self):
-            self.calls = []
-
-        def get(self, url, timeout=30, allow_redirects=True):
-            self.calls.append(url)
-            if url == "https://example.com/manual-step":
-                return _Response(
-                    '<html><body><a href="https://example.com/resultaten/abc">Open</a></body></html>',
-                    url=url,
-                )
-
-            if url == "https://example.com/resultaten/abc":
-                return _Response(
-                    """
-                    <section>
-                      <article>
-                        <img alt=\"Logo Mega\" />
-                        <h3>Smart Flex</h3>
-                        <p>€ 95,00 / maand</p>
-                        <p>€ 1.140,00 / jaar</p>
-                      </article>
-                    </section>
-                    """,
-                    url=url,
-                )
-
-            return _Response("", url=url)
-
-    component_session = ComponentSession()
-    component_session.s = _FakeSession()
-
-    result = component_session.get_data(config, ContractType.FIXED)
-
-    assert "Elektriciteit" in result
-    assert component_session.s.calls == [
-        "https://example.com/manual-step",
-        "https://example.com/resultaten/abc",
-    ]
-
-
-def test_manual_results_url_retries_after_privacy_gate_redirect():
-    """When redirected to DPG consent, scraper should call callback and retry URL."""
-    config = {
-        "manual_results_url": "https://example.com/manual",
-        "postalcode": "1000",
-        "electricity_digital_counter": False,
-        "day_electricity_consumption": 3800,
-        "night_electricity_consumption": 0,
-        "excl_night_electricity_consumption": 0,
-        "solar_panels": False,
-        "electricity_injection": 0,
-        "electricity_injection_night": 0,
-        "electricity_provider": "No provider",
-        "inverter_power": 0,
-        "combine_elec_and_gas": False,
-        "gas_consumption": 0,
-        "gas_provider": "No provider",
-        "directdebit_invoice": True,
-        "email_invoice": True,
-        "online_support": True,
-        "electric_car": False,
-    }
-
-    privacy_redirect_url = (
-        "https://myprivacy.dpgmedia.be/consent?siteKey=x&callbackUrl="
-        "https%3A%2F%2Fwww.mijnenergie.be%2Fprivacygate-confirm%3FredirectUri%3D%252Fmanual"
-    )
-
-    class _Response:
-        def __init__(self, text, status_code=200, url=""):
-            self.text = text
-            self.status_code = status_code
-            self.url = url
-
-        def raise_for_status(self):
-            return None
-
-    class _FakeSession:
-        def __init__(self):
-            self.calls = []
-            self._manual_count = 0
-
-        def get(self, url, timeout=30, allow_redirects=True):
-            self.calls.append(url)
-
-            if url == "https://example.com/manual":
-                self._manual_count += 1
-                if self._manual_count == 1:
-                    return _Response("consent", url=privacy_redirect_url)
-                return _Response(
-                    """
-                    <section>
-                      <article>
-                        <img alt=\"Logo Mega\" />
-                        <h3>Smart Flex</h3>
-                        <p>€ 95,00 / maand</p>
-                        <p>€ 1.140,00 / jaar</p>
-                      </article>
-                    </section>
-                    """,
-                    url=url,
-                )
-
-            if url == "https://www.mijnenergie.be/privacygate-confirm?redirectUri=%2Fmanual":
-                return _Response("ok", url=url)
-
-            return _Response("", url=url)
-
-    component_session = ComponentSession()
-    component_session.s = _FakeSession()
-
-    result = component_session.get_data(config, ContractType.FIXED)
-
-    assert "Elektriciteit" in result
-    assert component_session.s.calls == [
-        "https://example.com/manual",
-        "https://www.mijnenergie.be/privacygate-confirm?redirectUri=%2Fmanual",
-        "https://example.com/manual",
-    ]
-
-
-def test_validate_manual_results_url_rejects_step_url():
-    """Step URLs should be rejected because they are not result pages."""
-    with pytest.raises(vol.Invalid):
-        validate_manual_results_url(
-            "https://www.mijnenergie.be/vergelijking/stap-3/3b5e4543-e1f8-4215-adf3-45fc929910ab"
-        )
-
-
-def test_validate_manual_results_url_accepts_non_step_url():
-    """Non-step URLs should pass validation."""
-    assert (
-        validate_manual_results_url(
-            "https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe"
-        )
-        is True
-    )
-
-
-def test_check_settings_rejects_invalid_manual_results_url():
-    """Settings validation should fail fast for step URLs."""
-    config = {
-        "postalcode": "1000",
-        "manual_results_url": "https://www.mijnenergie.be/vergelijking/stap-2/abc",
-    }
-
-    with pytest.raises(vol.Invalid):
-        check_settings(config, None)
+def test_check_settings_accepts_minimal_valid_config():
+    """Settings validation should pass for valid postal code based config."""
+    config = {"postalcode": "1000"}
+    assert check_settings(config, None) is True
 
 
 def test_generated_url_next_not_found_raises_comparison_unavailable():
@@ -569,6 +316,75 @@ def test_simulation_http_422_falls_back_to_generated_url_parsing():
                 json_value={"message": "validation failed"},
                 status_code=422,
             )
+
+    component_session = ComponentSession()
+    component_session.s = _FakeSession()
+
+    result = component_session.get_data(config, ContractType.FIXED)
+
+    assert "Elektriciteit" in result
+    offer = result["Elektriciteit"][0]
+    assert offer["provider"] == "Mega"
+    assert offer["name"] == "Smart Flex"
+
+
+def test_locality_api_error_falls_back_to_generated_url_parsing():
+    """Locality lookup failures should skip simulation and keep HTML fallback alive."""
+    config = {
+        "postalcode": "1000",
+        "electricity_digital_counter": False,
+        "day_electricity_consumption": 3800,
+        "night_electricity_consumption": 0,
+        "excl_night_electricity_consumption": 0,
+        "solar_panels": False,
+        "electricity_injection": 0,
+        "electricity_injection_night": 0,
+        "electricity_provider": "No provider",
+        "inverter_power": 0,
+        "combine_elec_and_gas": False,
+        "gas_consumption": 0,
+        "gas_provider": "No provider",
+        "directdebit_invoice": True,
+        "email_invoice": True,
+        "online_support": True,
+        "electric_car": False,
+    }
+
+    class _Response:
+        def __init__(self, text="", json_value=None, status_code=200):
+            self.text = text
+            self.status_code = status_code
+            self._json_value = json_value
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.exceptions.HTTPError(
+                    f"{self.status_code} error", response=self
+                )
+            return None
+
+        def json(self):
+            return self._json_value
+
+    class _FakeSession:
+        def get(self, url, timeout=30, allow_redirects=True):
+            if "zone/localities" in url:
+                raise requests.RequestException("locality endpoint unavailable")
+            return _Response(
+                text="""
+                <section>
+                  <article>
+                    <img alt=\"Logo Mega\" />
+                    <h3>Smart Flex</h3>
+                    <p>€ 95,00 / maand</p>
+                    <p>€ 1.140,00 / jaar</p>
+                  </article>
+                </section>
+                """
+            )
+
+        def post(self, url, json=None, timeout=30, allow_redirects=True):
+            raise AssertionError("simulation API should not be called after locality failure")
 
     component_session = ComponentSession()
     component_session.s = _FakeSession()

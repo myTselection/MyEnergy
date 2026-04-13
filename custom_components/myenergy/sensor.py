@@ -37,7 +37,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Required("email_invoice"): cv.boolean,
         vol.Required("online_support"): cv.boolean,
         vol.Required("add_details"): cv.boolean,
-        vol.Optional("manual_results_url"): cv.string,
         vol.Required("electric_car"): cv.boolean,
         vol.Required("combine_elec_and_gas"): cv.boolean,
         vol.Required("electricity_digital_counter"): cv.boolean,
@@ -132,6 +131,7 @@ def calculate_days_remaining(target_date):
 class ComponentData:
     def __init__(self, config, hass):
         self._config = config
+        self._parsed_inputs = normalize_input_config(config)
         self._hass = hass
         self._session = ComponentSession()
         self._postalcode = config.get("postalcode")
@@ -198,7 +198,7 @@ class ComponentData:
                     self._refresh_retry = 5
                     if not self._comparison_unavailable_logged:
                         _LOGGER.warning(
-                            "%s %s Set manual_results_url to a resultaten/offers URL to restore data.",
+                            "%s %s",
                             NAME,
                             comparison_unavailable_message,
                         )
@@ -256,6 +256,7 @@ class ComponentSensor(Entity):
         self._promo = None
         self._name = f"{NAME} {self._postalcode}"
         self._add_details = data._add_details
+        self._input_profile = data._parsed_inputs
 
     @property
     def state(self):
@@ -266,6 +267,7 @@ class ComponentSensor(Entity):
         await self._data.update()
         self._details = self._data._details        
         self._add_details = self._data._add_details
+        self._input_profile = self._data._parsed_inputs
         self._last_update =  self._data._last_update
         self._name = f"{NAME} {self._postalcode} {self._fuel_type.fullnameEN} {self._contract_type.fullname}"
         self._contract_type_details = self._details.get(self._contract_type.code)
@@ -340,6 +342,7 @@ class ComponentSensor(Entity):
             "promo": self._promo,
             "total price per year": self._priceyear,
             "total kWh per year": self._kWhyear,
+            "input profile": self._input_profile,
             "fulldetail": self._fueltype_detail if self._add_details else "details disabled in config"
         }
 
@@ -353,7 +356,8 @@ class ComponentSensor(Entity):
                 (NAME, self._data.unique_id)
             },
             name=self._data.name,
-            manufacturer= NAME
+            manufacturer= NAME,
+            configuration_url="https://www.mijnenergie.be/"
         )
 
     @property
