@@ -3,7 +3,7 @@ import pytest
 
 from homeassistant.setup import async_setup_component
 
-from custom_components.myenergy.const import DOMAIN
+from custom_components.myenergy import DOMAIN
 
 
 @pytest.mark.asyncio
