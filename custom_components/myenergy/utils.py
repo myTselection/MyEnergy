@@ -231,6 +231,7 @@ def normalize_input_config(config):
         "electricity_comp": electricity_comp,
         "gas_comp": gas_comp,
         "meter_type": meter_type,
+        "meter_type_api": 1 if meter_type == "MONO" else 2,
         "elec_level": elec_level,
         "electricity_provider_id": providers.get(electricity_provider, "0"),
         "gas_provider_id": providers.get(gas_provider, "0"),
@@ -252,6 +253,7 @@ def _build_simulation_payload(config, locality):
     gas_comp = parsed["gas_comp"]
 
     meter_type = parsed["meter_type"]
+    meter_type_api = parsed["meter_type_api"]
     solar_panels = parsed["solar_panels"]
 
     payload = {
@@ -269,7 +271,7 @@ def _build_simulation_payload(config, locality):
         "onlyGreenEnergy": False,
         "onlyElectricalVehicle": False,
         "fillingOption": "manual",
-        "meterType": meter_type,
+        "meterType": meter_type_api,
         "exclusiveNightMeter": excl_night_electricity_consumption > 0,
         "digitalMeter": parsed["electricity_digital_counter"],
         "solarPanels": solar_panels,

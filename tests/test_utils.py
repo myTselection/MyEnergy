@@ -415,7 +415,7 @@ def test_build_simulation_payload_mono_without_gas_or_solar():
     locality = {"id": 7, "zipCode": 1000}
     payload = _build_simulation_payload(config, locality)
 
-    assert payload["meterType"] == "MONO"
+    assert payload["meterType"] == 1
     assert payload["eAnnualDayConsumption"] == 3500
     assert payload["eAnnualNightConsumption"] is None
     assert payload["eAnnualDayInjection"] is None
