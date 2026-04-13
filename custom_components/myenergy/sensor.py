@@ -169,6 +169,7 @@ class ComponentData:
         self._last_update = datetime.now()
         empty_contracts = []
         parsed_any_contract = False
+        comparison_unavailable_message = None
         for contract_type in ContractType:
             if self._session:
                 _LOGGER.debug("Getting data for " + NAME)
@@ -189,6 +190,13 @@ class ComponentData:
                     else:
                         empty_contracts.append(contract_type.code)
                         self._refresh_required = True
+                except ComparisonUnavailableError as e:
+                    comparison_unavailable_message = str(e)
+                    self._details[contract_type.code] = {}
+                    self._refresh_required = False
+                    self._refresh_retry = 5
+                    _LOGGER.error("%s %s", NAME, comparison_unavailable_message)
+                    break
                 except Exception as e:
                     # Log the exception details
                     _LOGGER.warning(f"An exception occurred, will retry: {str(e)}", exc_info=True)
@@ -199,7 +207,7 @@ class ComponentData:
             else:
                 _LOGGER.debug(f"{NAME} no session available")
 
-        if empty_contracts and not parsed_any_contract:
+        if not comparison_unavailable_message and empty_contracts and not parsed_any_contract:
             _LOGGER.warning(
                 "%s no data parsed for contract types %s",
                 NAME,

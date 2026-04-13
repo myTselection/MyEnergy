@@ -25,6 +25,10 @@ providers = {"No provider": "0","Social rate": "1000", "Aspiravi": "30", "Bolt":
 headings= ["Energiekosten", "Nettarieven en heffingen", "Promo via Mijnenergie"]
 
 
+class ComparisonUnavailableError(Exception):
+    """Raised when MijnEnergie no longer serves comparison results for generated URL."""
+
+
 def validate_manual_results_url(manual_results_url):
     if not manual_results_url:
         return True
@@ -114,6 +118,144 @@ def _parse_new_results_cards(soup, result_url, yearly_consumption, section_name)
 
     return {section_name: [parsed_cards[0]]}
 
+
+def _to_float(value, default=0.0):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _build_simulation_payload(config, locality):
+    day_electricity_consumption = config.get("day_electricity_consumption", 0)
+    night_electricity_consumption = config.get("night_electricity_consumption", 0)
+    excl_night_electricity_consumption = config.get("excl_night_electricity_consumption", 0)
+    electricity_injection = config.get("electricity_injection", 0)
+    electricity_injection_night = config.get("electricity_injection_night", 0)
+    gas_consumption = config.get("gas_consumption", 0)
+
+    electricity_comp = day_electricity_consumption != 0 or night_electricity_consumption != 0 or excl_night_electricity_consumption != 0
+    gas_comp = gas_consumption != 0
+
+    meter_type = "MONO" if night_electricity_consumption == 0 and excl_night_electricity_consumption == 0 else "BI"
+    solar_panels = config.get("solar_panels", False)
+
+    payload = {
+        "site": "www.mijnenergie.be",
+        "locale": "NL",
+        "clientType": "INDIV",
+        "localityId": locality.get("id"),
+        "localityZipCode": int(locality.get("zipCode")),
+        "electricity": electricity_comp,
+        "gas": gas_comp,
+        "rateType": "ALL",
+        "contractDuration": "ALL",
+        "comparisonMethod": "VREG",
+        "showPromo": True,
+        "onlyGreenEnergy": False,
+        "onlyElectricalVehicle": False,
+        "fillingOption": "manual",
+        "meterType": meter_type,
+        "exclusiveNightMeter": excl_night_electricity_consumption > 0,
+        "digitalMeter": config.get("electricity_digital_counter", False),
+        "solarPanels": solar_panels,
+        "electricVehicle": config.get("electric_car", False),
+    }
+
+    if electricity_comp:
+        payload["eAnnualDayConsumption"] = int(day_electricity_consumption)
+        payload["eAnnualNightConsumption"] = int(night_electricity_consumption) if meter_type == "BI" else None
+        payload["eAnnualExclusiveNightConsumption"] = int(excl_night_electricity_consumption) if excl_night_electricity_consumption > 0 else None
+        payload["eAnnualDayInjection"] = int(electricity_injection) if solar_panels else None
+        payload["eAnnualNightInjection"] = int(electricity_injection_night) if solar_panels and meter_type == "BI" else None
+
+    if gas_comp:
+        payload["gAnnualKWhConsumption"] = int(gas_consumption)
+
+    return payload
+
+
+def _parse_simulation_results(simulation_data, contract_type, type_comp, yearly_consumption, section_name):
+    result_sets = simulation_data.get("forwardResults") or simulation_data.get("results") or []
+    if not result_sets:
+        return {}
+
+    expected_energy = "ELEC" if type_comp == "elektriciteit" else "GAS"
+    require_fixed = contract_type.code == "F"
+
+    best_match = None
+    best_total = None
+
+    for result in result_sets:
+        supplier = result.get("supplier") or {}
+        for product in result.get("products") or []:
+            is_fixed = bool(product.get("isFixed"))
+            if require_fixed != is_fixed:
+                continue
+
+            energy = (product.get("energy") or "").upper()
+            if energy not in (expected_energy, "DUAL"):
+                continue
+
+            total = _to_float(product.get("total"), _to_float(result.get("total"), 0.0))
+            if total <= 0:
+                continue
+
+            if best_total is None or total < best_total:
+                best_total = total
+                best_match = (result, product, supplier)
+
+    if best_match is None:
+        return {}
+
+    result, product, supplier = best_match
+    annual_total = _to_float(product.get("total"), _to_float(result.get("total"), 0.0))
+    monthly_total = annual_total / 12 if annual_total > 0 else 0
+
+    price_groups = product.get("priceGroups") or []
+    energy_cost = ""
+    net_and_taxes = 0.0
+    for group in price_groups:
+        group_name = (group.get("groupName") or "").lower()
+        group_total = _to_float(group.get("total"), 0.0)
+        if "energy" in group_name:
+            energy_cost = f"€ {group_total:.2f}/jaar"
+        if "network" in group_name or "tax" in group_name:
+            net_and_taxes += group_total
+
+    promo = _to_float(result.get("savings"), 0.0)
+
+    comparison_uuid = (((simulation_data.get("computedComparisonData") or {}).get("energyComparison") or {}).get("uuid"))
+    result_url = f"https://www.mijnenergie.be/vergelijking/stap-3/{comparison_uuid}" if comparison_uuid else ""
+
+    json_data = {
+        "name": product.get("productName", ""),
+        "url": result_url,
+        "provider": supplier.get("name", ""),
+        "Maandelijkse kostprijs": [f"€ {monthly_total:.2f}/maand"],
+    }
+
+    if energy_cost:
+        json_data[headings[0]] = energy_cost
+    if net_and_taxes > 0:
+        json_data[headings[1]] = f"€ {net_and_taxes:.2f}/jaar"
+    if promo > 0:
+        json_data[headings[2]] = f"€ {promo:.2f}"
+
+    if yearly_consumption > 0:
+        cents_per_kwh = (annual_total / yearly_consumption) * 100
+        json_data["Jaarlijkse kostprijs"] = [
+            f"{cents_per_kwh:.2f} c€/kWh",
+            f"{yearly_consumption} kWh/jaar",
+            f"€ {annual_total:.2f}/jaar",
+        ]
+    else:
+        json_data["Jaarlijkse kostprijs"] = [f"€ {annual_total:.2f}/jaar"]
+
+    return {section_name: [json_data]}
+
 class FuelType(Enum):
     GAS = ("G","Aardgas","Gas")
     ELECTRICITY = ("E","Elektriciteit","Electricity")
@@ -200,9 +342,50 @@ class ComponentSession(object):
             elec_level += 1
 
         result = {}
+
+        simulation_data = None
+        if not manual_results_url:
+            locality_response = self.s.get(
+                f"https://api.comparateur.be/zone/localities?zipCode={postalcode}",
+                timeout=30,
+                allow_redirects=True,
+            )
+            locality_response.raise_for_status()
+            localities = locality_response.json()
+            locality = None
+            for candidate in localities:
+                if str(candidate.get("zipCode")) == str(postalcode):
+                    locality = candidate
+                    break
+            if locality is None and localities:
+                locality = localities[0]
+
+            if locality is not None:
+                simulation_payload = _build_simulation_payload(config, locality)
+                simulation_response = self.s.post(
+                    "https://api.comparateur.be/energy/comparison/simulation",
+                    json=simulation_payload,
+                    timeout=30,
+                    allow_redirects=True,
+                )
+                simulation_response.raise_for_status()
+                simulation_data = simulation_response.json()
+
         for type_comp in types_comp:
             section_name = _build_section_name(type_comp)
             yearly_consumption = day_electricity_consumption + night_electricity_consumption + excl_night_electricity_consumption if type_comp == "elektriciteit" else gas_consumption
+
+            if simulation_data is not None:
+                parsed = _parse_simulation_results(
+                    simulation_data,
+                    contract_type,
+                    type_comp,
+                    yearly_consumption,
+                    section_name,
+                )
+                if parsed:
+                    result.update(parsed)
+                    continue
 
             if manual_results_url:
                 _LOGGER.debug(f"Using manual results URL: {manual_results_url}")
@@ -223,6 +406,12 @@ class ComponentSession(object):
             _LOGGER.debug(f"myenergy_url: {myenergy_url}")
             response = self.s.get(myenergy_url,timeout=30,allow_redirects=True)
             response.raise_for_status()
+
+            if "NEXT_NOT_FOUND" in response.text or "Pagina niet gevonden" in response.text:
+                raise ComparisonUnavailableError(
+                    "Generated comparison URL returned not found page. "
+                    "Automatic GUI mode is currently unsupported by MijnEnergie website."
+                )
             
             _LOGGER.debug("get result status code: " + str(response.status_code))
             # _LOGGER.debug("get result response: " + str(response.text))

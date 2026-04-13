@@ -6,11 +6,14 @@ import voluptuous as vol
 
 from custom_components.myenergy.sensor import ComponentData
 from custom_components.myenergy.utils import (
+    ComparisonUnavailableError,
     ComponentSession,
     ContractType,
+    _build_simulation_payload,
     check_settings,
     _build_section_name,
     _extract_euro_value,
+    _parse_simulation_results,
     _parse_new_results_cards,
     validate_manual_results_url,
 )
@@ -222,3 +225,142 @@ def test_check_settings_rejects_invalid_manual_results_url():
 
     with pytest.raises(vol.Invalid):
         check_settings(config, None)
+
+
+def test_generated_url_next_not_found_raises_comparison_unavailable():
+    """Generated URL not-found page should raise a non-retryable comparison error."""
+    config = {
+        "postalcode": "1000",
+        "electricity_digital_counter": False,
+        "day_electricity_consumption": 3800,
+        "night_electricity_consumption": 0,
+        "excl_night_electricity_consumption": 0,
+        "solar_panels": False,
+        "electricity_injection": 0,
+        "electricity_injection_night": 0,
+        "electricity_provider": "No provider",
+        "inverter_power": 0,
+        "combine_elec_and_gas": False,
+        "gas_consumption": 0,
+        "gas_provider": "No provider",
+        "directdebit_invoice": True,
+        "email_invoice": True,
+        "online_support": True,
+        "electric_car": False,
+    }
+
+    class _Response:
+        def __init__(self, text="", json_value=None):
+            self.text = text
+            self.status_code = 200
+            self._json_value = json_value
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._json_value
+
+    class _FakeSession:
+        def get(self, url, timeout=30, allow_redirects=True):
+            if "zone/localities" in url:
+                return _Response(json_value=[{"id": 7, "zipCode": 1000}])
+            return _Response("<html><head><title>Pagina niet gevonden</title></head><body>NEXT_NOT_FOUND</body></html>")
+
+        def post(self, url, json=None, timeout=30, allow_redirects=True):
+            # Force legacy fallback path by returning empty API results.
+            return _Response(json_value={"results": [], "forwardResults": []})
+
+    component_session = ComponentSession()
+    component_session.s = _FakeSession()
+
+    with pytest.raises(ComparisonUnavailableError):
+        component_session.get_data(config, ContractType.FIXED)
+
+
+def test_build_simulation_payload_mono_without_gas_or_solar():
+    """Payload builder should match API validation for mono electricity setup."""
+    config = {
+        "postalcode": "1000",
+        "day_electricity_consumption": 3500,
+        "night_electricity_consumption": 0,
+        "excl_night_electricity_consumption": 0,
+        "electricity_injection": 0,
+        "electricity_injection_night": 0,
+        "gas_consumption": 0,
+        "solar_panels": False,
+        "electricity_digital_counter": False,
+        "electric_car": False,
+    }
+
+    locality = {"id": 7, "zipCode": 1000}
+    payload = _build_simulation_payload(config, locality)
+
+    assert payload["meterType"] == "MONO"
+    assert payload["eAnnualDayConsumption"] == 3500
+    assert payload["eAnnualNightConsumption"] is None
+    assert payload["eAnnualDayInjection"] is None
+    assert "gAnnualKWhConsumption" not in payload
+
+
+def test_parse_simulation_results_selects_cheapest_matching_contract_and_fuel():
+    """Simulation parser should pick cheapest product matching contract/fuel filter."""
+    simulation_data = {
+        "computedComparisonData": {"energyComparison": {"uuid": "abc-123"}},
+        "forwardResults": [
+            {
+                "total": "1600.00",
+                "savings": "0",
+                "supplier": {"name": "Supplier A"},
+                "products": [
+                    {
+                        "productName": "A Fixed",
+                        "energy": "ELEC",
+                        "isFixed": True,
+                        "total": "1600.00",
+                        "priceGroups": [{"groupName": "Energy", "total": "800.00"}],
+                    }
+                ],
+            },
+            {
+                "total": "1400.00",
+                "savings": "10",
+                "supplier": {"name": "Supplier B"},
+                "products": [
+                    {
+                        "productName": "B Variable",
+                        "energy": "ELEC",
+                        "isFixed": False,
+                        "total": "1400.00",
+                        "priceGroups": [
+                            {"groupName": "Energy", "total": "700.00"},
+                            {"groupName": "Taxes", "total": "200.00"},
+                            {"groupName": "Network costs", "total": "300.00"},
+                        ],
+                    }
+                ],
+            },
+        ],
+    }
+
+    parsed_variable = _parse_simulation_results(
+        simulation_data,
+        ContractType.VARIABLE,
+        "elektriciteit",
+        3500,
+        "Elektriciteit",
+    )
+    variable_offer = parsed_variable["Elektriciteit"][0]
+    assert variable_offer["provider"] == "Supplier B"
+    assert variable_offer["name"] == "B Variable"
+
+    parsed_fixed = _parse_simulation_results(
+        simulation_data,
+        ContractType.FIXED,
+        "elektriciteit",
+        3500,
+        "Elektriciteit",
+    )
+    fixed_offer = parsed_fixed["Elektriciteit"][0]
+    assert fixed_offer["provider"] == "Supplier A"
+    assert fixed_offer["name"] == "A Fixed"
