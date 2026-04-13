@@ -155,11 +155,22 @@ class ComponentFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize."""
         self._errors = {}
 
+    def _validate_user_input(self, user_input):
+        try:
+            validate_manual_results_url(user_input.get("manual_results_url", ""))
+        except vol.Invalid:
+            self._errors["manual_results_url"] = "invalid_manual_results_url"
+            return False
+        return True
+
 
     async def async_step_user(self, user_input=None):  # pylint: disable=dangerous-default-value
         """Handle a flow initialized by the user."""
 
         if user_input is not None:
+            self._errors = {}
+            if not self._validate_user_input(user_input):
+                return await self._show_config_form(user_input)
             return self.async_create_entry(title=NAME, data=user_input)
 
         return await self._show_config_form(user_input)
@@ -196,6 +207,14 @@ class ComponentOptionsHandler(config_entries.ConfigFlow):
         self.options = dict(config_entry.options)
         self._errors = {}
 
+    def _validate_user_input(self, user_input):
+        try:
+            validate_manual_results_url(user_input.get("manual_results_url", ""))
+        except vol.Invalid:
+            self._errors["manual_results_url"] = "invalid_manual_results_url"
+            return False
+        return True
+
     async def async_step_init(self, user_input=None):
         return self.async_show_form(
             step_id="edit",
@@ -206,7 +225,19 @@ class ComponentOptionsHandler(config_entries.ConfigFlow):
     async def async_step_edit(self, user_input):
         _LOGGER.debug(f"{NAME} async_step_edit user_input: {user_input}")
         if user_input is not None:
+            self._errors = {}
+            if not self._validate_user_input(user_input):
+                return self.async_show_form(
+                    step_id="edit",
+                    data_schema=vol.Schema(create_schema(self.config_entry, option=True)),
+                    errors=self._errors,
+                )
             self.hass.config_entries.async_update_entry(
                 self.config_entry, data=user_input
             )
             return self.async_create_entry(title=NAME, data=user_input)
+        return self.async_show_form(
+            step_id="edit",
+            data_schema=vol.Schema(create_schema(self.config_entry, option=True)),
+            errors=self._errors,
+        )

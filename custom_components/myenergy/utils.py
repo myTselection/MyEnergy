@@ -25,6 +25,23 @@ providers = {"No provider": "0","Social rate": "1000", "Aspiravi": "30", "Bolt":
 headings= ["Energiekosten", "Nettarieven en heffingen", "Promo via Mijnenergie"]
 
 
+def validate_manual_results_url(manual_results_url):
+    if not manual_results_url:
+        return True
+
+    parsed_url = urllib.parse.urlparse(manual_results_url)
+    if parsed_url.scheme not in ("http", "https"):
+        raise vol.Invalid("manual_results_url must be a valid http(s) URL.")
+
+    # Step URLs are input pages. They do not contain offer cards that parser needs.
+    if re.search(r"/vergelijking/stap-\d+(?:/|$)", parsed_url.path):
+        raise vol.Invalid(
+            "manual_results_url points to a vergelijking step page. Use a resultaten/offers URL instead."
+        )
+
+    return True
+
+
 def _extract_euro_value(text):
     if not text:
         return None
@@ -118,9 +135,10 @@ class ContractType(Enum):
 def check_settings(config, hass):
     if not any(config.get(i) for i in ["postalcode"]):
         _LOGGER.error("postalcode was not set")
-    else:
-        return True
-    raise vol.Invalid("Missing settings to setup the sensor.")
+        raise vol.Invalid("Missing settings to setup the sensor.")
+
+    validate_manual_results_url(config.get("manual_results_url", ""))
+    return True
         
 
 class ComponentSession(object):
@@ -194,7 +212,11 @@ class ComponentSession(object):
                 parsed = _parse_new_results_cards(soup, manual_results_url, yearly_consumption, section_name)
                 if parsed:
                     result.update(parsed)
-                continue
+                    continue
+                _LOGGER.warning(
+                    "Manual results URL returned no parseable offers for %s, falling back to generated URL",
+                    section_name,
+                )
 
             myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={type_comp}&d={electricity_digital_counter_n}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C1-{electricity_injection}%7C{electricity_injection_night}%7C{solar_panels_n}%7C%7C0%21{contract_type.code}%21A%21n%7C0%21{contract_type.code}%21A%7C{combine_elec_and_gas_n}%7C{inverter_power}%7C%7C%7C%7C%7C%21%7C%7C{inverter_power}%7C%7C{electric_car_n}-{electricity_provider_n}%7C{gas_provider_n}-0"
             

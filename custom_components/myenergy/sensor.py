@@ -167,6 +167,8 @@ class ComponentData:
             self._session = ComponentSession()
         
         self._last_update = datetime.now()
+        empty_contracts = []
+        parsed_any_contract = False
         for contract_type in ContractType:
             if self._session:
                 _LOGGER.debug("Getting data for " + NAME)
@@ -181,23 +183,28 @@ class ComponentData:
                     self._details[contract_type.code] = contract_details
 
                     if contract_details:
+                        parsed_any_contract = True
                         self._refresh_retry = 0
                         self._refresh_required = False
                     else:
-                        _LOGGER.warning(
-                            "%s no data parsed for contract type %s",
-                            NAME,
-                            contract_type.code,
-                        )
+                        empty_contracts.append(contract_type.code)
                         self._refresh_required = True
                 except Exception as e:
                     # Log the exception details
                     _LOGGER.warning(f"An exception occurred, will retry: {str(e)}", exc_info=True)
                     self._details[contract_type.code] = self._details.get(contract_type.code, {})
+                    empty_contracts.append(contract_type.code)
                     self._refresh_required = True
                 _LOGGER.debug("Data fetched completed " + NAME)
             else:
                 _LOGGER.debug(f"{NAME} no session available")
+
+        if empty_contracts and not parsed_any_contract:
+            _LOGGER.warning(
+                "%s no data parsed for contract types %s",
+                NAME,
+                ",".join(empty_contracts),
+            )
 
     @Throttle(MIN_TIME_BETWEEN_UPDATES)
     async def _update(self):

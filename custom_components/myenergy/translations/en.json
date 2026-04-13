@@ -53,7 +53,8 @@
     },
     "error": {
       "missing data options handler": "Option handler failed",
-      "no_valid_settings": "No valid settings check in ha config."
+      "no_valid_settings": "No valid settings check in ha config.",
+      "invalid_manual_results_url": "Manual resultaten URL cannot be a /vergelijking/stap-* page. Use the final offers/results page URL."
     }
   },
   "options": {
@@ -85,7 +86,8 @@
     },
     "error": {
       "missing data options handler": "Option handler failed",
-      "no_valid_settings": "No valid settings check in ha config."
+      "no_valid_settings": "No valid settings check in ha config.",
+      "invalid_manual_results_url": "Manual resultaten URL cannot be a /vergelijking/stap-* page. Use the final offers/results page URL."
     }
   }
 }
