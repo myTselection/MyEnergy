@@ -271,7 +271,7 @@ def _build_simulation_payload(config, locality):
         "onlyGreenEnergy": False,
         "onlyElectricalVehicle": False,
         "fillingOption": "manual",
-        "meterType": meter_type_api,
+        "meterType": str(meter_type_api),
         "exclusiveNightMeter": excl_night_electricity_consumption > 0,
         "digitalMeter": parsed["electricity_digital_counter"],
         "solarPanels": solar_panels,
@@ -280,21 +280,19 @@ def _build_simulation_payload(config, locality):
 
     if electricity_comp:
         payload["eAnnualDayConsumption"] = int(day_electricity_consumption)
-        payload["eAnnualNightConsumption"] = int(night_electricity_consumption) if meter_type == "BI" else None
-        payload["eAnnualExclusiveNightConsumption"] = int(excl_night_electricity_consumption) if excl_night_electricity_consumption > 0 else None
-        payload["eAnnualDayInjection"] = int(electricity_injection) if solar_panels else None
-        payload["eAnnualNightInjection"] = int(electricity_injection_night) if solar_panels and meter_type == "BI" else None
+        if meter_type == "BI":
+            payload["eAnnualNightConsumption"] = int(night_electricity_consumption)
+        if excl_night_electricity_consumption > 0:
+            payload["eAnnualExclusiveNightConsumption"] = int(excl_night_electricity_consumption)
+        if solar_panels:
+            payload["eAnnualDayInjection"] = int(electricity_injection)
+            if meter_type == "BI":
+                payload["eAnnualNightInjection"] = int(electricity_injection_night)
 
     if gas_comp:
         payload["gAnnualKWhConsumption"] = int(gas_consumption)
 
     return payload
-
-
-def _is_meter_type_validation_error(response_text):
-    if not response_text:
-        return False
-    return '"propertyPath":"meterType"' in response_text.replace(" ", "")
 
 
 def _parse_simulation_results(simulation_data, contract_type, type_comp, yearly_consumption, section_name):
@@ -521,34 +519,14 @@ class ComponentSession(object):
                 # to generated results parsing instead of failing whole refresh.
                 if simulation_response.status_code == 422:
                     response_text = simulation_response.text or ""
-                    if _is_meter_type_validation_error(response_text):
-                        retry_payload = dict(simulation_payload)
-                        retry_payload["meterType"] = str(simulation_payload.get("meterType"))
-                        retry_response = self.s.post(
-                            simulation_url,
-                            json=retry_payload,
-                            timeout=30,
-                            allow_redirects=True,
-                        )
-                        try:
-                            retry_response.raise_for_status()
-                            simulation_data = retry_response.json()
-                            _LOGGER.debug(
-                                "Simulation API accepted fallback meterType encoding. meterType=%s",
-                                retry_payload["meterType"],
-                            )
-                        except requests.exceptions.HTTPError:
-                            response_text = retry_response.text or response_text
-
-                    if simulation_data is None:
-                        response_snippet = response_text[:500]
-                        _LOGGER.warning(
-                            "Simulation API rejected payload with HTTP 422. Falling back to HTML parsing. "
-                            "payload=%s response=%s",
-                            simulation_payload,
-                            response_snippet,
-                        )
-                        simulation_data = None
+                    response_snippet = response_text[:500]
+                    _LOGGER.warning(
+                        "Simulation API rejected payload with HTTP 422. Falling back to HTML parsing. "
+                        "payload=%s response=%s",
+                        simulation_payload,
+                        response_snippet,
+                    )
+                    simulation_data = None
                 else:
                     raise err
 
