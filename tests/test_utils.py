@@ -463,7 +463,7 @@ def test_simulation_422_falls_back_to_html_parsing():
         component_session.get_data(config, ContractType.FIXED)
 
     # meterType sent as string directly
-    assert component_session.s.post_payloads[0]["meterType"] == "2"
+    assert component_session.s.post_payloads[0]["meterType"] == "DUAL"
     # Only one POST (no retry)
     assert len(component_session.s.post_payloads) == 1
 
@@ -486,7 +486,7 @@ def test_build_simulation_payload_mono_without_gas_or_solar():
     locality = {"id": 7, "zipCode": 1000}
     payload = _build_simulation_payload(config, locality)
 
-    assert payload["meterType"] == "1"
+    assert payload["meterType"] == "MONO"
     assert payload["eAnnualDayConsumption"] == 3500
     assert "eAnnualNightConsumption" not in payload
     assert "eAnnualDayInjection" not in payload
