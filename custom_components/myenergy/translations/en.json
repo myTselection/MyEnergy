@@ -22,7 +22,8 @@
                     "directdebit_invoice": "Mandatory payment of invoice by direct debit",
                     "email_invoice": "Send invoice only via e-mail",
                     "online_support": "Customer service access only via email/internet",
-                    "add_details": "Add extended product and price details as json"
+                    "add_details": "Add extended product and price details as json",
+                    "manual_results_url": "Optional MijnEnergie resultaten URL override"
                 }
             },
             "edit": {
@@ -45,7 +46,8 @@
                     "directdebit_invoice": "Mandatory payment of invoice by direct debit",
                     "email_invoice": "Send invoice only via e-mail",
                     "online_support": "Customer service access only via email/internet",
-                    "add_details": "Add extended product and price details as json"
+                    "add_details": "Add extended product and price details as json",
+                    "manual_results_url": "Optional MijnEnergie resultaten URL override"
                 }
             }
 
@@ -77,7 +79,8 @@
                     "directdebit_invoice": "Mandatory payment of invoice by direct debit",
                     "email_invoice": "Send invoice only via e-mail",
                     "online_support": "Customer service access only via email/internet",
-                    "add_details": "Add extended product and price details as json"
+                    "add_details": "Add extended product and price details as json",
+                    "manual_results_url": "Optional MijnEnergie resultaten URL override"
                 }
             }
         },

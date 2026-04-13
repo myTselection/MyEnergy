@@ -37,6 +37,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Required("email_invoice"): cv.boolean,
         vol.Required("online_support"): cv.boolean,
         vol.Required("add_details"): cv.boolean,
+        vol.Optional("manual_results_url"): cv.string,
         vol.Required("electric_car"): cv.boolean,
         vol.Required("combine_elec_and_gas"): cv.boolean,
         vol.Required("electricity_digital_counter"): cv.boolean,

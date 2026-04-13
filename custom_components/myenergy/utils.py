@@ -1,5 +1,6 @@
 
 import logging
+import re
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -22,6 +23,79 @@ providers = {"No provider": "0","Social rate": "1000", "Aspiravi": "30", "Bolt":
                  "Trevion": "3", "Wase Wind": "16", 'Wind voor "A"': "36", "Other": "1"}
 
 headings= ["Energiekosten", "Nettarieven en heffingen", "Promo via Mijnenergie"]
+
+
+def _extract_euro_value(text):
+    if not text:
+        return None
+    match = re.search(r"€\s*([0-9\.,]+)", text)
+    if not match:
+        return None
+    value = match.group(1).replace(".", "").replace(",", ".")
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def _normalize_provider_name(name):
+    return name.replace("Logo ", "").strip().title() if name else ""
+
+
+def _build_section_name(type_comp):
+    if type_comp == "elektriciteit":
+        return FuelType.ELECTRICITY.fullnameNL
+    if type_comp == "aardgas":
+        return FuelType.GAS.fullnameNL
+    return type_comp.title()
+
+
+def _parse_new_results_cards(soup, result_url, yearly_consumption, section_name):
+    cards = soup.select("article")
+    parsed_cards = []
+
+    for card in cards:
+        provider_img = card.select_one("img[alt]")
+        provider_name = _normalize_provider_name(provider_img.get("alt", "") if provider_img else "")
+
+        # The first heading in the card is usually the product/contract name.
+        name_el = card.select_one("h2, h3, h4")
+        contract_name = name_el.get_text(" ", strip=True) if name_el else ""
+
+        card_text = card.get_text(" ", strip=True)
+        annual_match = re.search(r"€\s*[0-9\.,]+\s*/\s*jaar", card_text, re.IGNORECASE)
+        monthly_match = re.search(r"€\s*[0-9\.,]+\s*/\s*maand", card_text, re.IGNORECASE)
+
+        annual_value = _extract_euro_value(annual_match.group(0) if annual_match else "")
+        monthly_value = _extract_euro_value(monthly_match.group(0) if monthly_match else "")
+
+        json_data = {
+            "name": contract_name,
+            "url": result_url,
+            "provider": provider_name,
+        }
+
+        if monthly_value is not None:
+            json_data["Maandelijkse kostprijs"] = [f"€ {monthly_value:.2f}/maand"]
+
+        if annual_value is not None:
+            if yearly_consumption > 0:
+                cents_per_kwh = (annual_value / yearly_consumption) * 100
+                json_data["Jaarlijkse kostprijs"] = [
+                    f"{cents_per_kwh:.2f} c€/kWh",
+                    f"{yearly_consumption} kWh/jaar",
+                    f"€ {annual_value:.2f}/jaar",
+                ]
+            else:
+                json_data["Jaarlijkse kostprijs"] = [f"€ {annual_value:.2f}/jaar"]
+
+        if json_data.get("provider") and json_data.get("Jaarlijkse kostprijs"):
+            parsed_cards.append(json_data)
+
+    if not parsed_cards:
+        return {}
+
+    return {section_name: [parsed_cards[0]]}
 
 class FuelType(Enum):
     GAS = ("G","Aardgas","Gas")
@@ -56,6 +130,7 @@ class ComponentSession(object):
         self.s.headers["Accept-Language"] = "en-US,en;q=0.9"
 
     def get_data(self, config, contract_type: ContractType):
+        manual_results_url = config.get("manual_results_url", "")
         postalcode = config.get("postalcode")
         electricity_digital_counter = config.get("electricity_digital_counter", False)
         electricity_digital_counter_n = 1 if electricity_digital_counter == True else 0
@@ -108,11 +183,24 @@ class ComponentSession(object):
 
         result = {}
         for type_comp in types_comp:
+            section_name = _build_section_name(type_comp)
+            yearly_consumption = day_electricity_consumption + night_electricity_consumption + excl_night_electricity_consumption if type_comp == "elektriciteit" else gas_consumption
+
+            if manual_results_url:
+                _LOGGER.debug(f"Using manual results URL: {manual_results_url}")
+                response = self.s.get(manual_results_url, timeout=30, allow_redirects=True)
+                response.raise_for_status()
+                soup = BeautifulSoup(response.text, "html.parser")
+                parsed = _parse_new_results_cards(soup, manual_results_url, yearly_consumption, section_name)
+                if parsed:
+                    result.update(parsed)
+                continue
+
             myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={type_comp}&d={electricity_digital_counter_n}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C1-{electricity_injection}%7C{electricity_injection_night}%7C{solar_panels_n}%7C%7C0%21{contract_type.code}%21A%21n%7C0%21{contract_type.code}%21A%7C{combine_elec_and_gas_n}%7C{inverter_power}%7C%7C%7C%7C%7C%21%7C%7C{inverter_power}%7C%7C{electric_car_n}-{electricity_provider_n}%7C{gas_provider_n}-0"
             
             _LOGGER.debug(f"myenergy_url: {myenergy_url}")
             response = self.s.get(myenergy_url,timeout=30,allow_redirects=True)
-            assert response.status_code == 200
+            response.raise_for_status()
             
             _LOGGER.debug("get result status code: " + str(response.status_code))
             # _LOGGER.debug("get result response: " + str(response.text))
@@ -193,6 +281,12 @@ class ComponentSession(object):
                     #only first restult is needed, if all details are required, remove the break below
                     break
                 result[sectionName] = providerdetails_array
+
+            # Fallback parser for the new resultaten page layout.
+            if section_name not in result:
+                parsed = _parse_new_results_cards(soup, myenergy_url, yearly_consumption, section_name)
+                if parsed:
+                    result.update(parsed)
         return result
 
 

@@ -6,7 +6,7 @@
 [![GitHub last commit](https://img.shields.io/github/last-commit/myTselection/MyEnergy.svg)](https://github.com/myTselection/MyEnergy/commits/master)
 [![GitHub commit activity](https://img.shields.io/github/commit-activity/m/myTselection/MyEnergy.svg)](https://github.com/myTselection/MyEnergy/graphs/commit-activity)
 
-# :warning: STATUS: Currently BROKEN and not working. This integration is not (yet) compatible with the new website of mijnenergie.be.
+# :warning: STATUS: Experimental support for the new mijnenergie.be website
 
 # My Energy - MijnEnergie.be Home Assistant integration
 [Mijn Energie](https://www.mijnenergie.be/) Home Assistant custom component integration for Belgium. This custom component has been built from the ground up to bring MijnEnergie.be site data into Home Assistant sensors in order to follow up the cheapest energy electricty and gas prices. This integration is built against the public website provided by MijnEnergie.be for Belgium and has not been tested for any other countries.
@@ -53,6 +53,14 @@ Device `MyEnergy` should become available with the following sensors:
   | fulldetail | If configuration option to add product and price detail json is enabled, all site data will be added as a json to enable fetching extra contract specific data. Example to fetch data out of it `{{state_attr('sensor.myenergy_1190_electricity_fixed','fulldetail')[0].Dagtarief[0]}}` |
 	
 </details>
+
+### Updated website compatibility note
+
+The mijnenergie.be website was recently redesigned. The integration now includes parsing support for the new results layout, and also exposes an optional configuration field:
+
+- `manual_results_url` (optional): direct URL to a MijnEnergie results page (for example `https://www.mijnenergie.be/resultaten/<uuid>`)
+
+When this value is set, the integration will fetch and parse that results page directly. This is currently the most reliable path while full end-to-end automation of the new multi-step flow is still being improved.
 
 ## Status
 Still some optimisations are planned, see [Issues](https://github.com/myTselection/MyEnergy/issues) section in GitHub.

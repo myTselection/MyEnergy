@@ -48,6 +48,7 @@ def create_schema(entry, option=False):
         default_electricity_provider = entry.data.get("electricity_provider", "No provider")
         default_gas_provider = entry.data.get("gas_provider", "No provider")
         default_add_details = entry.data.get("add_details", False)
+        default_manual_results_url = entry.data.get("manual_results_url", "")
     else:
         default_postalcode = ""
         default_electricity_digital_counter = False
@@ -67,6 +68,7 @@ def create_schema(entry, option=False):
         default_electricity_provider = "No provider"
         default_gas_provider = "No provider"
         default_add_details = False
+        default_manual_results_url = ""
 
     # _LOGGER.debug(f'provider_names: {provider_names}')
     data_schema = OrderedDict()
@@ -134,6 +136,9 @@ def create_schema(entry, option=False):
     data_schema[
         vol.Required("add_details", default=default_add_details, description="add_details")
     ] = bool
+    data_schema[
+        vol.Optional("manual_results_url", default=default_manual_results_url, description="manual_results_url")
+    ] = str
 
     return data_schema
 
