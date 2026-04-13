@@ -132,33 +132,33 @@ def test_parse_new_results_cards_parses_legacy_card_layout():
 
 
 def test_parse_new_results_cards_prefers_yearly_context_over_max_value():
-        """Annual selection should prioritize yearly-context value over unrelated larger amounts."""
-        html = """
-        <section>
-            <article>
-                <img alt="Logo Mega" />
-                <h3>Context Aware Plan</h3>
-                <p>Special bonus: € 2.500,00</p>
-                <p>Estimated yearly amount € 1.140,00</p>
-            </article>
-        </section>
-        """
-        soup = BeautifulSoup(html, "html.parser")
+    """Annual selection should prioritize yearly-context value over unrelated larger amounts."""
+    html = """
+    <section>
+        <article>
+            <img alt="Logo Mega" />
+            <h3>Context Aware Plan</h3>
+            <p>Special bonus: € 2.500,00</p>
+            <p>Estimated yearly amount € 1.140,00</p>
+        </article>
+    </section>
+    """
+    soup = BeautifulSoup(html, "html.parser")
 
-        parsed = _parse_new_results_cards(
-                soup,
-                "https://example.com/results",
-                3800,
-                "Elektriciteit",
-        )
+    parsed = _parse_new_results_cards(
+        soup,
+        "https://example.com/results",
+        3800,
+        "Elektriciteit",
+    )
 
-        assert "Elektriciteit" in parsed
-        card = parsed["Elektriciteit"][0]
-        assert card["Jaarlijkse kostprijs"] == [
-                "30.00 c€/kWh",
-                "3800 kWh/jaar",
-                "€ 1140.00/jaar",
-        ]
+    assert "Elektriciteit" in parsed
+    card = parsed["Elektriciteit"][0]
+    assert card["Jaarlijkse kostprijs"] == [
+        "30.00 c€/kWh",
+        "3800 kWh/jaar",
+        "€ 1140.00/jaar",
+    ]
 
 
 @pytest.mark.asyncio
