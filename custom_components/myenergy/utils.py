@@ -291,6 +291,12 @@ def _build_simulation_payload(config, locality):
     return payload
 
 
+def _is_meter_type_validation_error(response_text):
+    if not response_text:
+        return False
+    return '"propertyPath":"meterType"' in response_text.replace(" ", "")
+
+
 def _parse_simulation_results(simulation_data, contract_type, type_comp, yearly_consumption, section_name):
     result_sets = simulation_data.get("forwardResults") or simulation_data.get("results") or []
     if not result_sets:
@@ -500,8 +506,9 @@ class ComponentSession(object):
 
         if locality is not None:
             simulation_payload = _build_simulation_payload(config, locality)
+            simulation_url = "https://api.comparateur.be/energy/comparison/simulation"
             simulation_response = self.s.post(
-                "https://api.comparateur.be/energy/comparison/simulation",
+                simulation_url,
                 json=simulation_payload,
                 timeout=30,
                 allow_redirects=True,
@@ -514,14 +521,34 @@ class ComponentSession(object):
                 # to generated results parsing instead of failing whole refresh.
                 if simulation_response.status_code == 422:
                     response_text = simulation_response.text or ""
-                    response_snippet = response_text[:500]
-                    _LOGGER.warning(
-                        "Simulation API rejected payload with HTTP 422. Falling back to HTML parsing. "
-                        "payload=%s response=%s",
-                        simulation_payload,
-                        response_snippet,
-                    )
-                    simulation_data = None
+                    if _is_meter_type_validation_error(response_text):
+                        retry_payload = dict(simulation_payload)
+                        retry_payload["meterType"] = str(simulation_payload.get("meterType"))
+                        retry_response = self.s.post(
+                            simulation_url,
+                            json=retry_payload,
+                            timeout=30,
+                            allow_redirects=True,
+                        )
+                        try:
+                            retry_response.raise_for_status()
+                            simulation_data = retry_response.json()
+                            _LOGGER.debug(
+                                "Simulation API accepted fallback meterType encoding. meterType=%s",
+                                retry_payload["meterType"],
+                            )
+                        except requests.exceptions.HTTPError:
+                            response_text = retry_response.text or response_text
+
+                    if simulation_data is None:
+                        response_snippet = response_text[:500]
+                        _LOGGER.warning(
+                            "Simulation API rejected payload with HTTP 422. Falling back to HTML parsing. "
+                            "payload=%s response=%s",
+                            simulation_payload,
+                            response_snippet,
+                        )
+                        simulation_data = None
                 else:
                     raise err
 

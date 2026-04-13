@@ -397,6 +397,95 @@ def test_locality_api_error_falls_back_to_generated_url_parsing():
     assert offer["name"] == "Smart Flex"
 
 
+def test_simulation_422_meter_type_retries_with_string_value():
+    """When meterType validation fails, retry payload with string-encoded meterType."""
+    config = {
+        "postalcode": "1000",
+        "electricity_digital_counter": False,
+        "day_electricity_consumption": 2000,
+        "night_electricity_consumption": 1500,
+        "excl_night_electricity_consumption": 0,
+        "solar_panels": False,
+        "electricity_injection": 0,
+        "electricity_injection_night": 0,
+        "electricity_provider": "No provider",
+        "inverter_power": 0,
+        "combine_elec_and_gas": False,
+        "gas_consumption": 0,
+        "gas_provider": "No provider",
+        "directdebit_invoice": True,
+        "email_invoice": True,
+        "online_support": True,
+        "electric_car": False,
+    }
+
+    simulation_result = {
+        "computedComparisonData": {"energyComparison": {"uuid": "abc-123"}},
+        "forwardResults": [
+            {
+                "total": "1200.00",
+                "savings": "0",
+                "supplier": {"name": "Supplier Retry"},
+                "products": [
+                    {
+                        "productName": "Retry Fixed",
+                        "energy": "ELEC",
+                        "isFixed": True,
+                        "total": "1200.00",
+                        "priceGroups": [{"groupName": "Energy", "total": "800.00"}],
+                    }
+                ],
+            }
+        ],
+    }
+
+    class _Response:
+        def __init__(self, text="", json_value=None, status_code=200):
+            self.text = text
+            self.status_code = status_code
+            self._json_value = json_value
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.exceptions.HTTPError(
+                    f"{self.status_code} error", response=self
+                )
+            return None
+
+        def json(self):
+            return self._json_value
+
+    class _FakeSession:
+        def __init__(self):
+            self.post_payloads = []
+
+        def get(self, url, timeout=30, allow_redirects=True):
+            if "zone/localities" in url:
+                return _Response(json_value=[{"id": 7, "zipCode": 1000}])
+            raise AssertionError("HTML fallback should not be called when simulation retry succeeds")
+
+        def post(self, url, json=None, timeout=30, allow_redirects=True):
+            self.post_payloads.append(json)
+            if len(self.post_payloads) == 1:
+                return _Response(
+                    text='{"details":[{"propertyPath":"meterType"}],"statusCode":422}',
+                    status_code=422,
+                )
+            return _Response(json_value=simulation_result)
+
+    component_session = ComponentSession()
+    component_session.s = _FakeSession()
+
+    result = component_session.get_data(config, ContractType.FIXED)
+
+    assert "Elektriciteit" in result
+    offer = result["Elektriciteit"][0]
+    assert offer["provider"] == "Supplier Retry"
+    assert offer["name"] == "Retry Fixed"
+    assert component_session.s.post_payloads[0]["meterType"] == 2
+    assert component_session.s.post_payloads[1]["meterType"] == "2"
+
+
 def test_build_simulation_payload_mono_without_gas_or_solar():
     """Payload builder should match API validation for mono electricity setup."""
     config = {
