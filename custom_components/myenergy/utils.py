@@ -158,7 +158,7 @@ def _parse_new_results_cards(soup, result_url, yearly_consumption, section_name)
             if yearly_consumption > 0:
                 cents_per_kwh = (annual_value / yearly_consumption) * 100
                 json_data["Jaarlijkse kostprijs"] = [
-                    f"{cents_per_kwh:.2f} c€/kWh",
+                    f"{cents_per_kwh:.2f}".replace(".", ",") + " c€/kWh",
                     f"{yearly_consumption} kWh/jaar",
                     f"€ {annual_value:.2f}/jaar",
                 ]
