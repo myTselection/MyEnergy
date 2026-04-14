@@ -139,10 +139,10 @@ Dashboard:
         period: month
         type: statistics-graph
         entities:
-          - sensor.myenergy_electricity_fixed_statistics
-          - sensor.myenergy_electricity_variable_statistics
-          - sensor.myenergy_gas_fixed_statistics
-          - sensor.myenergy_gas_variable_statistics
+          - sensor.myenergy_[postalcode]_electricity_fixed_statistics
+          - sensor.myenergy_[postalcode]_electricity_variable_statistics
+          - sensor.myenergy_[postalcode]_gas_fixed_statistics
+          - sensor.myenergy_[postalcode]_gas_variable_statistics
         stat_types:
           - mean
           - min
