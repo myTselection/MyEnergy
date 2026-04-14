@@ -41,7 +41,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Required("combine_elec_and_gas"): cv.boolean,
         vol.Required("electricity_digital_counter"): cv.boolean,
         vol.Required("solar_panels"): cv.boolean,
-        vol.Optional("inverter_power"): cv.positive_int
+        vol.Optional("inverter_power"): vol.Coerce(float)
     }
 )
 

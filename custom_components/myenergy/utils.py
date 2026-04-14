@@ -191,7 +191,7 @@ def normalize_input_config(config):
     electricity_injection = int(config.get("electricity_injection", 0) or 0)
     electricity_injection_night = int(config.get("electricity_injection_night", 0) or 0)
     gas_consumption = int(config.get("gas_consumption", 0) or 0)
-    inverter_power = int(config.get("inverter_power", 0) or 0)
+    inverter_power = _to_float(config.get("inverter_power", 0.0)) or 0.0
 
     electricity_provider = config.get("electricity_provider", "No provider")
     gas_provider = config.get("gas_provider", "No provider")
@@ -288,7 +288,7 @@ def _build_simulation_payload(config, locality):
             payload["eAnnualDayInjection"] = int(electricity_injection)
             if meter_type == "BI":
                 payload["eAnnualNightInjection"] = int(electricity_injection_night)
-            payload["eInverterPower"] = int(parsed["inverter_power"])
+            payload["eInverterPower"] = parsed["inverter_power"]
 
     if gas_comp:
         payload["gAnnualKWhConsumption"] = int(gas_consumption)

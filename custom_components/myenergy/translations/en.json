@@ -13,7 +13,7 @@
           "solar_panels": "Solar panels",
           "electricity_injection": "Electricity injection (kWh)",
           "electricity_injection_night": "Electricity injection night and weekend (kWh)",
-          "inverter_power": "What is the total power of the inverter(s) of your installation?",
+          "inverter_power": "What is the total power of the inverter(s) of your installation? (kW, eg 3.5)",
           "electricity_provider": "Select your current electricity provider",
           "electric_car": "Electrical car",
           "gas_consumption": "Average gas consumption per year (kWh)",

@@ -107,7 +107,7 @@ def create_schema(entry, option=False):
     ] = int
     data_schema[
         vol.Optional("inverter_power", default=default_inverter_power, description="inverter_power")
-    ] = int
+    ] = vol.Coerce(float)
     data_schema[
         vol.Required("gas_provider", default=default_gas_provider, description="gas_provider")
     ] = selector({
