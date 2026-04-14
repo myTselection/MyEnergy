@@ -531,6 +531,20 @@ class VtestSensor(Entity):
         self._add_details = self._data._config.get("add_details", False)
         self._input_profile = self._data._parsed_inputs
         self._last_update = self._data._last_update
+
+        # Reset all payload fields before repopulating to avoid stale values
+        self._price = None
+        self._priceyear = None
+        self._kWhyear = None
+        self._url = None
+        self._providername = None
+        self._contractname = None
+        self._energycost = None
+        self._netrate = None
+        self._promo = None
+        self._fueltype_detail = None
+        self._providerdetails = None
+
         self._contract_type_details = self._details.get(self._contract_type.code)
 
         if self._contract_type_details is None:
@@ -542,17 +556,6 @@ class VtestSensor(Entity):
             return
         if not self._contract_type_details:
             _LOGGER.debug("VTest: No parsed entries for contract type %s", self._contract_type.code)
-            self._price = None
-            self._priceyear = None
-            self._kWhyear = None
-            self._url = None
-            self._providername = None
-            self._contractname = None
-            self._energycost = None
-            self._netrate = None
-            self._promo = None
-            self._fueltype_detail = None
-            self._providerdetails = None
             return
 
         for fueltype_name in self._contract_type_details.keys():
