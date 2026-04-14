@@ -510,9 +510,8 @@ class VtestSession(object):
                     tuples.append(("InjectionNight", str(parsed["electricity_injection_night"])))
                 if parsed["inverter_power"] > 0:
                     tuples.append(("KnowsInverterPower", "true"))
-                    # Config stores inverter_power in W; vtest.be expects kW with comma decimal
-                    inverter_kw = parsed["inverter_power"] / 1000.0
-                    tuples.append(("InverterPower", f"{inverter_kw:.2f}".replace(".", ",")))
+                    # inverter_power is already in kW (user enters e.g. 3.5); vtest.be uses comma decimal
+                    tuples.append(("InverterPower", f"{parsed['inverter_power']:.2f}".replace(".", ",")))
 
         if parsed["gas_comp"]:
             tuples.append(("EnergyTypeGas", "true"))

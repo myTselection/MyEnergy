@@ -231,7 +231,7 @@ def test_build_form_data_solar_panels_with_inverter():
         **BASE_CONFIG,
         "solar_panels": True,
         "electricity_injection": 1200,
-        "inverter_power": 3500,  # W → should become "3,50" kW
+        "inverter_power": 3.5,  # kW (as entered by user) → should become "3,50"
     }
     session = VtestSession.__new__(VtestSession)
     parsed = normalize_input_config(config)
