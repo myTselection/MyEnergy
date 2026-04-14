@@ -3,7 +3,7 @@ import logging
 import re
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
 import urllib.parse
 from enum import Enum
 
@@ -418,6 +418,299 @@ def check_settings(config, hass):
         raise vol.Invalid("Missing settings to setup the sensor.")
     return True
         
+
+class VtestSession(object):
+    """Fetches energy comparison data from vtest.be (VREG official Belgian tool)."""
+
+    VTEST_URL = "https://www.vtest.be/"
+    CACHE_TTL = timedelta(minutes=30)
+
+    def __init__(self):
+        self.s = requests.Session()
+        self.s.headers.update(
+            {
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept-Language": "nl-BE,nl;q=0.9",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Origin": "https://www.vtest.be",
+                "Referer": "https://www.vtest.be/",
+            }
+        )
+        self._location_id_cache: dict = {}
+        # (cache_key, timestamp, {contract_code: parsed_results})
+        self._results_cache: tuple | None = None
+
+    def _fetch_main_page(self) -> str:
+        resp = self.s.get(self.VTEST_URL, timeout=30, allow_redirects=True)
+        resp.raise_for_status()
+        return resp.text
+
+    def _extract_location_id(self, html: str, postalcode: str) -> str | None:
+        """Return the LocationId value for the first matching postalcode entry."""
+        soup = BeautifulSoup(html, "html.parser")
+        select = soup.find("select", {"id": "PostalCode"})
+        if not select:
+            _LOGGER.warning("VTest: PostalCode select not found in page HTML")
+            return None
+        postalcode_str = str(postalcode).strip()
+        for option in select.find_all("option"):
+            val = option.get("value", "").strip()
+            if not val:
+                continue
+            text = option.get_text(strip=True)
+            # Option text format: "9000 - Gent"
+            if text.startswith(postalcode_str + " - ") or text.startswith(postalcode_str + "-"):
+                return val
+        _LOGGER.warning("VTest: No LocationId found for postalcode %s", postalcode)
+        return None
+
+    def _extract_csrf_token(self, html: str) -> str:
+        soup = BeautifulSoup(html, "html.parser")
+        token_el = soup.find("input", {"name": "__RequestVerificationToken"})
+        return token_el.get("value", "") if token_el else ""
+
+    def _build_form_data(self, parsed: dict, location_id: str, csrf_token: str) -> dict:
+        has_night = parsed["night_electricity_consumption"] > 0
+        has_excl_night = parsed["excl_night_electricity_consumption"] > 0
+        electricity_comp = parsed["electricity_comp"]
+        gas_comp = parsed["gas_comp"]
+
+        data = {
+            "__RequestVerificationToken": csrf_token,
+            "ShowModalCreateProfile": "False",
+            "IsFromIndexPage": "True",
+            "CreateLocation": "False",
+            "LocationId": location_id,
+            "PostalCode": location_id,
+            "LocationUserInput": "",
+            "ProductFiltersStr": "",
+            "ProfilelessContractsString": "",
+            "PropertyType": "1",   # residential
+            "UserConsumption": "2",  # "Ik ken mijn verbruik"
+        }
+
+        if electricity_comp:
+            data["EnergyTypeElectricity"] = "true"
+            data["HasDigitalMeter"] = "true" if parsed["electricity_digital_counter"] else "false"
+            data["HasNightMeter"] = "true" if has_night else "false"
+            data["UsageDay"] = str(parsed["day_electricity_consumption"])
+            if has_night:
+                data["UsageNight"] = str(parsed["night_electricity_consumption"])
+            if has_excl_night:
+                data["HasExclusiveNight"] = "true"
+                data["UsageExclusiveNight"] = str(parsed["excl_night_electricity_consumption"])
+            if parsed["solar_panels"]:
+                data["HasSolarPanels"] = "true"
+                if parsed["electricity_injection"] > 0:
+                    data["InjectionDay"] = str(parsed["electricity_injection"])
+                if has_night and parsed["electricity_injection_night"] > 0:
+                    data["InjectionNight"] = str(parsed["electricity_injection_night"])
+                if parsed["inverter_power"] > 0:
+                    data["KnowsInverterPower"] = "true"
+                    # Config stores inverter_power in W; vtest.be expects kW with comma decimal
+                    inverter_kw = parsed["inverter_power"] / 1000.0
+                    data["InverterPower"] = f"{inverter_kw:.2f}".replace(".", ",")
+
+        if gas_comp:
+            data["EnergyTypeGas"] = "true"
+            data["UsageGas"] = str(parsed["gas_consumption"])
+            data["GasMeterUnit"] = "1"  # kWh
+
+        return data
+
+    def _parse_all_results(self, soup: BeautifulSoup, parsed_config: dict) -> dict:
+        """Return {contract_code: {section_name: [best_match]}} for all contract types."""
+        electricity_comp = parsed_config["electricity_comp"]
+        gas_comp = parsed_config["gas_comp"]
+        day_cons = parsed_config["day_electricity_consumption"]
+        night_cons = parsed_config["night_electricity_consumption"]
+        excl_night_cons = parsed_config["excl_night_electricity_consumption"]
+        gas_cons = parsed_config["gas_consumption"]
+        yearly_elec = day_cons + night_cons + excl_night_cons
+
+        # Collect all potential result cards from the page
+        cards = soup.select("article")
+        if not cards:
+            cards = soup.select(
+                "[class*='c-result-card'], [class*='result-card'], [class*='contract-card']"
+            )
+        if not cards:
+            # Generic fallback: any div that looks like a card with a price
+            candidates = soup.find_all("div", class_=re.compile(r"card", re.I))
+            cards = [c for c in candidates if re.search(r"€", c.get_text())]
+
+        _LOGGER.debug("VTest: %d potential result cards found", len(cards))
+
+        # For each (fuel_type, contract_type) combination find cheapest card
+        def _best_for(fuel_type: "FuelType", contract_type: "ContractType", yearly_consumption: int) -> dict:
+            is_fixed = contract_type == ContractType.FIXED
+            section_name = fuel_type.fullnameNL
+
+            FIXED_KEYWORDS = ("vast", "vaste", "fixed", "langetermijn")
+            VARIABLE_KEYWORDS = ("variabel", "variable", "flex", "dynamisch", "dynamic")
+            ELECTRICITY_KEYWORDS = ("elektr", "stroom")
+            GAS_KEYWORDS = ("gas",)
+
+            best_value = None
+            best_card = None
+
+            for card in cards:
+                raw_text = card.get_text(" ", strip=True)
+                card_lower = raw_text.lower()
+
+                # Filter by fuel type when both electricity and gas are requested
+                if electricity_comp and gas_comp:
+                    if fuel_type == FuelType.ELECTRICITY and not any(kw in card_lower for kw in ELECTRICITY_KEYWORDS):
+                        continue
+                    if fuel_type == FuelType.GAS and not any(kw in card_lower for kw in GAS_KEYWORDS):
+                        continue
+
+                # Filter by contract type when keywords are present
+                has_fixed_kw = any(kw in card_lower for kw in FIXED_KEYWORDS)
+                has_variable_kw = any(kw in card_lower for kw in VARIABLE_KEYWORDS)
+                if has_fixed_kw or has_variable_kw:
+                    if is_fixed and has_variable_kw and not has_fixed_kw:
+                        continue
+                    if not is_fixed and has_fixed_kw and not has_variable_kw:
+                        continue
+
+                # Extract annual cost from card text
+                annual_value = None
+                annual_match = re.search(r"€\s*([0-9\.,]+)\s*/\s*jaar", raw_text, re.IGNORECASE)
+                if annual_match:
+                    annual_value = _extract_euro_value(annual_match.group(0))
+                if annual_value is None:
+                    # Try reversed pattern: "1.234,56 € / jaar" or similar
+                    alt_match = re.search(r"([0-9][0-9\.,]+)\s*€\s*/\s*jaar", raw_text, re.IGNORECASE)
+                    if alt_match:
+                        annual_value = _extract_euro_value("€ " + alt_match.group(1))
+                if annual_value is None:
+                    # Try "Jaarlijks" label near a euro amount
+                    jaarlijks_match = re.search(
+                        r"jaarlijk[^\n€]{0,50}€\s*([0-9\.,]+)", raw_text, re.IGNORECASE
+                    )
+                    if jaarlijks_match:
+                        annual_value = _extract_euro_value("€ " + jaarlijks_match.group(1))
+
+                if not annual_value or annual_value <= 0:
+                    continue
+
+                if best_value is None or annual_value < best_value:
+                    best_value = annual_value
+                    best_card = card
+
+            if best_value is None or best_card is None:
+                _LOGGER.debug(
+                    "VTest: No %s %s contract found in results",
+                    fuel_type.fullnameEN,
+                    contract_type.fullname,
+                )
+                return {}
+
+            raw_text = best_card.get_text(" ", strip=True)
+
+            provider_img = best_card.find("img")
+            provider_name = _normalize_provider_name(provider_img.get("alt", "") if provider_img else "")
+
+            name_el = best_card.find(["h2", "h3", "h4"])
+            contract_name = name_el.get_text(" ", strip=True) if name_el else ""
+
+            json_data: dict = {
+                "name": contract_name,
+                "url": self.VTEST_URL,
+                "provider": provider_name,
+            }
+
+            # Try to extract monthly cost
+            monthly_match = re.search(r"€\s*([0-9\.,]+)\s*/\s*maand", raw_text, re.IGNORECASE)
+            if monthly_match:
+                monthly_value = _extract_euro_value(monthly_match.group(0))
+                if monthly_value:
+                    json_data["Maandelijkse kostprijs"] = [f"€ {monthly_value:.2f}/maand"]
+
+            if yearly_consumption > 0:
+                cents_per_kwh = (best_value / yearly_consumption) * 100
+                json_data["Jaarlijkse kostprijs"] = [
+                    f"{cents_per_kwh:.2f}".replace(".", ",") + " c€/kWh",
+                    f"{yearly_consumption} kWh/jaar",
+                    f"€ {best_value:.2f}/jaar",
+                ]
+            else:
+                json_data["Jaarlijkse kostprijs"] = [f"€ {best_value:.2f}/jaar"]
+
+            return {section_name: [json_data]}
+
+        all_results: dict = {}
+        for ct in ContractType:
+            ct_result: dict = {}
+            if electricity_comp:
+                ct_result.update(_best_for(FuelType.ELECTRICITY, ct, yearly_elec))
+            if gas_comp:
+                ct_result.update(_best_for(FuelType.GAS, ct, gas_cons))
+            all_results[ct.code] = ct_result
+
+        return all_results
+
+    def get_data(self, config: dict, contract_type: "ContractType") -> dict:
+        """Fetch vtest.be results and return parsed data for the requested contract type."""
+        parsed = normalize_input_config(config)
+        postalcode = parsed["postalcode"]
+
+        cache_key = (
+            f"{postalcode}"
+            f"_{parsed['electricity_comp']}"
+            f"_{parsed['gas_comp']}"
+            f"_{parsed['day_electricity_consumption']}"
+            f"_{parsed['night_electricity_consumption']}"
+            f"_{parsed['excl_night_electricity_consumption']}"
+            f"_{parsed['gas_consumption']}"
+        )
+        now = datetime.now()
+
+        if (
+            self._results_cache is not None
+            and self._results_cache[0] == cache_key
+            and (now - self._results_cache[1]) < self.CACHE_TTL
+        ):
+            _LOGGER.debug("VTest: Using cached results for %s", cache_key)
+            return self._results_cache[2].get(contract_type.code, {})
+
+        # Fetch main page for CSRF token and LocationId
+        _LOGGER.debug("VTest: Fetching main page for postal code %s", postalcode)
+        html = self._fetch_main_page()
+
+        location_id = self._location_id_cache.get(postalcode)
+        if location_id is None:
+            location_id = self._extract_location_id(html, postalcode)
+            if location_id:
+                self._location_id_cache[postalcode] = location_id
+            else:
+                _LOGGER.warning("VTest: Cannot resolve LocationId for postal code %s", postalcode)
+                return {}
+
+        csrf_token = self._extract_csrf_token(html)
+        form_data = self._build_form_data(parsed, location_id, csrf_token)
+
+        _LOGGER.debug(
+            "VTest: Submitting form for postal code %s (location_id=%s)", postalcode, location_id
+        )
+        response = self.s.post(
+            self.VTEST_URL,
+            data=form_data,
+            timeout=30,
+            allow_redirects=True,
+        )
+        response.raise_for_status()
+        _LOGGER.debug("VTest: Response status %s, url=%s", response.status_code, response.url)
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        all_results = self._parse_all_results(soup, parsed)
+
+        self._results_cache = (cache_key, now, all_results)
+        _LOGGER.debug("VTest: Parsed and cached results for %s", cache_key)
+
+        return all_results.get(contract_type.code, {})
+
 
 class ComponentSession(object):
     def __init__(self):
