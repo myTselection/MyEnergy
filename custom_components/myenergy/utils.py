@@ -626,6 +626,11 @@ class VtestSession(object):
             f"_{parsed['night_electricity_consumption']}"
             f"_{parsed['excl_night_electricity_consumption']}"
             f"_{parsed['gas_consumption']}"
+            f"_{parsed['electricity_digital_counter']}"
+            f"_{parsed['solar_panels']}"
+            f"_{parsed['electricity_injection']}"
+            f"_{parsed['electricity_injection_night']}"
+            f"_{parsed['inverter_power']}"
         )
         now = datetime.now()
 
