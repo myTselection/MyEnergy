@@ -479,14 +479,28 @@ class VtestSession(object):
             "__RequestVerificationToken": csrf_token,
             "ShowModalCreateProfile": "False",
             "IsFromIndexPage": "True",
+            "IsFromLandingPage": "False",
             "CreateLocation": "False",
             "LocationId": location_id,
             "PostalCode": location_id,
+            "LocationCoupledToFluvius": "False",
+            "ZipCodeBaarleHertog": "6999",
             "LocationUserInput": "",
             "ProductFiltersStr": "",
             "ProfilelessContractsString": "",
             "PropertyType": "1",   # residential
             "UserConsumption": "2",  # "Ik ken mijn verbruik"
+            # Default "Unknown" flags required by server-side model binding
+            "UnknownHasHeatPump": "false",
+            "UnknownHasElectricCar": "false",
+            "UnknownHasSolarPanels": "false",
+            "UnknownHasHomeBatttery": "false",
+            "HasExclusiveNight": "false",
+            "HasSolarPanels": "false",
+            "KnowsInverterPower": "false",
+            "KnowsCapacityElectricity": "false",
+            "EnergyTypeElectricity": "false",
+            "EnergyTypeGas": "false",
         }
 
         if electricity_comp:

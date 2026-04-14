@@ -172,7 +172,7 @@ def test_build_form_data_electricity_only():
     form = session._build_form_data(parsed, "7654", "tok")
 
     assert form["EnergyTypeElectricity"] == "true"
-    assert "EnergyTypeGas" not in form
+    assert form["EnergyTypeGas"] == "false"
     assert form["UsageDay"] == "3500"
     assert form["HasDigitalMeter"] == "false"
     assert form["HasNightMeter"] == "false"
@@ -190,7 +190,7 @@ def test_build_form_data_gas_only():
     form = session._build_form_data(parsed, "7654", "tok")
 
     assert form["EnergyTypeGas"] == "true"
-    assert "EnergyTypeElectricity" not in form
+    assert form["EnergyTypeElectricity"] == "false"
     assert form["UsageGas"] == "15000"
     assert form["GasMeterUnit"] == "1"
 
@@ -204,7 +204,7 @@ def test_build_form_data_night_meter():
 
     assert form["HasNightMeter"] == "true"
     assert form["UsageNight"] == "1000"
-    assert "HasExclusiveNight" not in form
+    assert form["HasExclusiveNight"] == "false"
 
 
 def test_build_form_data_exclusive_night():
