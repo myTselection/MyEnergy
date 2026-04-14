@@ -655,7 +655,6 @@ class VtestSession(object):
                 _LOGGER.warning("VTest: Cannot resolve LocationId for postal code %s", postalcode)
                 return {}
 
-        csrf_token = self._extract_csrf_token(html)
         form_tuples = self._build_form_data(html, parsed, location_id)
 
         _LOGGER.debug(
