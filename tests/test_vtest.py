@@ -35,18 +35,14 @@ MAIN_PAGE_HTML = """
 
 RESULTS_HTML_ELEC_ONLY = """
 <html><body>
-  <article>
-    <img alt="Logo Engie" />
-    <h3>Vast Comfort</h3>
-    <p>€ 95,00 / maand</p>
-    <p>€ 1.140,00 / jaar</p>
-  </article>
-  <article>
-    <img alt="Logo Luminus" />
-    <h3>Variabel Flex</h3>
-    <p>€ 70,00 / maand</p>
-    <p>€ 840,00 / jaar</p>
-  </article>
+  <div class="resultitem ct-ELECTRICITY" data-tarifftype="FIXED" data-price="1140,00">
+    <span id="supplier-name">Engie</span>
+    <h4 class="productNameStyle">Vast Comfort</h4>
+  </div>
+  <div class="resultitem ct-ELECTRICITY" data-tarifftype="VARIABLE" data-price="840,00">
+    <span id="supplier-name">Luminus</span>
+    <h4 class="productNameStyle">Variabel Flex</h4>
+  </div>
 </body></html>
 """
 
@@ -165,21 +161,32 @@ def test_extract_csrf_token_returns_empty_when_missing():
 # ---------------------------------------------------------------------------
 
 
+def _form_last(tuples, name):
+    """Return the last value for *name* in the tuple list, or None if absent."""
+    vals = [v for n, v in tuples if n == name]
+    return vals[-1] if vals else None
+
+
+def _form_has(tuples, name, value=None):
+    """Return True if *name* appears in tuples (optionally matching *value*)."""
+    return any(n == name and (value is None or v == value) for n, v in tuples)
+
+
 def test_build_form_data_electricity_only():
     """Electricity-only config should include electricity fields and omit gas."""
     session = VtestSession.__new__(VtestSession)
     parsed = normalize_input_config(BASE_CONFIG)
-    form = session._build_form_data(parsed, "7654", "tok")
+    form = session._build_form_data(MAIN_PAGE_HTML, parsed, "7654")
 
-    assert form["EnergyTypeElectricity"] == "true"
-    assert form["EnergyTypeGas"] == "false"
-    assert form["UsageDay"] == "3500"
-    assert form["HasDigitalMeter"] == "false"
-    assert form["HasNightMeter"] == "false"
-    assert form["LocationId"] == "7654"
-    assert form["PostalCode"] == "7654"
-    assert form["__RequestVerificationToken"] == "tok"
-    assert form["UserConsumption"] == "2"
+    assert _form_has(form, "EnergyTypeElectricity", "true")
+    assert not _form_has(form, "EnergyTypeGas")
+    assert _form_last(form, "UsageDay") == "3500"
+    assert _form_last(form, "HasDigitalMeter") == "false"
+    assert _form_last(form, "HasNightMeter") == "false"
+    assert _form_has(form, "LocationId", "7654")
+    assert _form_has(form, "PostalCode", "7654")
+    assert _form_has(form, "__RequestVerificationToken", "csrf-abc-123")
+    assert _form_last(form, "UserConsumption") == "2"
 
 
 def test_build_form_data_gas_only():
@@ -187,12 +194,12 @@ def test_build_form_data_gas_only():
     config = {**BASE_CONFIG, "day_electricity_consumption": 0, "gas_consumption": 15000}
     session = VtestSession.__new__(VtestSession)
     parsed = normalize_input_config(config)
-    form = session._build_form_data(parsed, "7654", "tok")
+    form = session._build_form_data(MAIN_PAGE_HTML, parsed, "7654")
 
-    assert form["EnergyTypeGas"] == "true"
-    assert form["EnergyTypeElectricity"] == "false"
-    assert form["UsageGas"] == "15000"
-    assert form["GasMeterUnit"] == "1"
+    assert _form_has(form, "EnergyTypeGas", "true")
+    assert not _form_has(form, "EnergyTypeElectricity")
+    assert _form_last(form, "UsageGas") == "15000"
+    assert _form_last(form, "GasMeterUnit") == "1"
 
 
 def test_build_form_data_night_meter():
@@ -200,11 +207,11 @@ def test_build_form_data_night_meter():
     config = {**BASE_CONFIG, "day_electricity_consumption": 2000, "night_electricity_consumption": 1000}
     session = VtestSession.__new__(VtestSession)
     parsed = normalize_input_config(config)
-    form = session._build_form_data(parsed, "7654", "tok")
+    form = session._build_form_data(MAIN_PAGE_HTML, parsed, "7654")
 
-    assert form["HasNightMeter"] == "true"
-    assert form["UsageNight"] == "1000"
-    assert form["HasExclusiveNight"] == "false"
+    assert _form_last(form, "HasNightMeter") == "true"
+    assert _form_last(form, "UsageNight") == "1000"
+    assert not _form_has(form, "HasExclusiveNight", "true")
 
 
 def test_build_form_data_exclusive_night():
@@ -212,10 +219,10 @@ def test_build_form_data_exclusive_night():
     config = {**BASE_CONFIG, "excl_night_electricity_consumption": 500}
     session = VtestSession.__new__(VtestSession)
     parsed = normalize_input_config(config)
-    form = session._build_form_data(parsed, "7654", "tok")
+    form = session._build_form_data(MAIN_PAGE_HTML, parsed, "7654")
 
-    assert form["HasExclusiveNight"] == "true"
-    assert form["UsageExclusiveNight"] == "500"
+    assert _form_has(form, "HasExclusiveNight", "true")
+    assert _form_last(form, "UsageExclusiveNight") == "500"
 
 
 def test_build_form_data_solar_panels_with_inverter():
@@ -228,12 +235,12 @@ def test_build_form_data_solar_panels_with_inverter():
     }
     session = VtestSession.__new__(VtestSession)
     parsed = normalize_input_config(config)
-    form = session._build_form_data(parsed, "7654", "tok")
+    form = session._build_form_data(MAIN_PAGE_HTML, parsed, "7654")
 
-    assert form["HasSolarPanels"] == "true"
-    assert form["InjectionDay"] == "1200"
-    assert form["KnowsInverterPower"] == "true"
-    assert form["InverterPower"] == "3,50"
+    assert _form_has(form, "HasSolarPanels", "true")
+    assert _form_last(form, "InjectionDay") == "1200"
+    assert _form_has(form, "KnowsInverterPower", "true")
+    assert _form_last(form, "InverterPower") == "3,50"
 
 
 def test_build_form_data_digital_meter():
@@ -241,9 +248,9 @@ def test_build_form_data_digital_meter():
     config = {**BASE_CONFIG, "electricity_digital_counter": True}
     session = VtestSession.__new__(VtestSession)
     parsed = normalize_input_config(config)
-    form = session._build_form_data(parsed, "7654", "tok")
+    form = session._build_form_data(MAIN_PAGE_HTML, parsed, "7654")
 
-    assert form["HasDigitalMeter"] == "true"
+    assert _form_last(form, "HasDigitalMeter") == "true"
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +263,7 @@ def _make_soup(html: str) -> BeautifulSoup:
 
 
 def test_parse_all_results_finds_fixed_and_variable_electricity():
-    """Both FIXED and VARIABLE electricity results should be parsed from article cards."""
+    """Both FIXED and VARIABLE electricity results should be parsed from .resultitem cards."""
     session = VtestSession.__new__(VtestSession)
     session.VTEST_URL = VtestSession.VTEST_URL
     parsed_config = normalize_input_config(BASE_CONFIG)
@@ -317,16 +324,14 @@ def test_parse_all_results_selects_cheapest_card():
     """When multiple cards of the same type exist, the cheapest annual cost wins."""
     html = """
     <html><body>
-      <article>
-        <img alt="Logo Expensive" />
-        <h3>Vast Duur</h3>
-        <p>€ 2.000,00 / jaar</p>
-      </article>
-      <article>
-        <img alt="Logo Cheap" />
-        <h3>Vast Goedkoop</h3>
-        <p>€ 900,00 / jaar</p>
-      </article>
+      <div class="resultitem ct-ELECTRICITY" data-tarifftype="FIXED" data-price="2000,00">
+        <span id="supplier-name">Expensive</span>
+        <h4 class="productNameStyle">Vast Duur</h4>
+      </div>
+      <div class="resultitem ct-ELECTRICITY" data-tarifftype="FIXED" data-price="900,00">
+        <span id="supplier-name">Cheap</span>
+        <h4 class="productNameStyle">Vast Goedkoop</h4>
+      </div>
     </body></html>
     """
     session = VtestSession.__new__(VtestSession)
@@ -343,11 +348,10 @@ def test_parse_all_results_gas_only_config():
     """Gas-only config should only produce gas results, not electricity."""
     html = """
     <html><body>
-      <article>
-        <img alt="Logo Engie" />
-        <h3>Gas Vast Plan</h3>
-        <p>€ 1.500,00 / jaar</p>
-      </article>
+      <div class="resultitem ct-GAS" data-tarifftype="FIXED" data-price="1500,00">
+        <span id="supplier-name">Engie</span>
+        <h4 class="productNameStyle">Gas Vast Plan</h4>
+      </div>
     </body></html>
     """
     config = {**BASE_CONFIG, "day_electricity_consumption": 0, "gas_consumption": 15000}

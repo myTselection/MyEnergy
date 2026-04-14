@@ -469,71 +469,65 @@ class VtestSession(object):
         token_el = soup.find("input", {"name": "__RequestVerificationToken"})
         return token_el.get("value", "") if token_el else ""
 
-    def _build_form_data(self, parsed: dict, location_id: str, csrf_token: str) -> dict:
-        has_night = parsed["night_electricity_consumption"] > 0
-        has_excl_night = parsed["excl_night_electricity_consumption"] > 0
-        electricity_comp = parsed["electricity_comp"]
-        gas_comp = parsed["gas_comp"]
+    def _build_form_data(self, html: str, parsed: dict, location_id: str) -> list:
+        """Return list of (name, value) tuples for the vtest.be form POST.
 
-        data = {
-            "__RequestVerificationToken": csrf_token,
-            "ShowModalCreateProfile": "False",
-            "IsFromIndexPage": "True",
-            "IsFromLandingPage": "False",
-            "CreateLocation": "False",
-            "LocationId": location_id,
-            "PostalCode": location_id,
-            "LocationCoupledToFluvius": "False",
-            "ZipCodeBaarleHertog": "6999",
-            "LocationUserInput": "",
-            "ProductFiltersStr": "",
-            "ProfilelessContractsString": "",
-            "PropertyType": "1",   # residential
-            "UserConsumption": "2",  # "Ik ken mijn verbruik"
-            # Default "Unknown" flags required by server-side model binding
-            "UnknownHasHeatPump": "false",
-            "UnknownHasElectricCar": "false",
-            "UnknownHasSolarPanels": "false",
-            "UnknownHasHomeBatttery": "false",
-            "HasExclusiveNight": "false",
-            "HasSolarPanels": "false",
-            "KnowsInverterPower": "false",
-            "KnowsCapacityElectricity": "false",
-            "EnergyTypeElectricity": "false",
-            "EnergyTypeGas": "false",
-        }
+        Extracts all HTML form inputs first (preserving ASP.NET checkbox+hidden bool pairs),
+        then appends our overrides. The tuple list approach is required because ASP.NET model
+        binding for booleans inspects the first "true" value; dict collapses duplicate keys.
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        form = soup.find("form")
+        tuples: list = []
+        if form:
+            for inp in form.find_all("input"):
+                name = inp.get("name")
+                if name:
+                    tuples.append((name, inp.get("value", "")))
 
-        if electricity_comp:
-            data["EnergyTypeElectricity"] = "true"
-            data["HasDigitalMeter"] = "true" if parsed["electricity_digital_counter"] else "false"
-            data["HasNightMeter"] = "true" if has_night else "false"
-            data["UsageDay"] = str(parsed["day_electricity_consumption"])
+        # Append overrides; these come after existing values and take effect for ASP.NET binding
+        tuples.append(("PostalCode", location_id))
+        tuples.append(("LocationId", location_id))
+        tuples.append(("UserConsumption", "2"))  # "Ik ken mijn verbruik"
+
+        if parsed["electricity_comp"]:
+            tuples.append(("EnergyTypeElectricity", "true"))
+            tuples.append(("UsageDay", str(parsed["day_electricity_consumption"])))
+            has_night = parsed["night_electricity_consumption"] > 0
+            has_excl_night = parsed["excl_night_electricity_consumption"] > 0
+            tuples.append(("HasNightMeter", "true" if has_night else "false"))
             if has_night:
-                data["UsageNight"] = str(parsed["night_electricity_consumption"])
+                tuples.append(("UsageNight", str(parsed["night_electricity_consumption"])))
             if has_excl_night:
-                data["HasExclusiveNight"] = "true"
-                data["UsageExclusiveNight"] = str(parsed["excl_night_electricity_consumption"])
+                tuples.append(("HasExclusiveNight", "true"))
+                tuples.append(("UsageExclusiveNight", str(parsed["excl_night_electricity_consumption"])))
+            tuples.append(("HasDigitalMeter", "true" if parsed["electricity_digital_counter"] else "false"))
             if parsed["solar_panels"]:
-                data["HasSolarPanels"] = "true"
+                tuples.append(("HasSolarPanels", "true"))
                 if parsed["electricity_injection"] > 0:
-                    data["InjectionDay"] = str(parsed["electricity_injection"])
-                if (has_night or has_excl_night) and parsed["electricity_injection_night"] > 0:
-                    data["InjectionNight"] = str(parsed["electricity_injection_night"])
+                    tuples.append(("InjectionDay", str(parsed["electricity_injection"])))
+                if parsed["electricity_injection_night"] > 0:
+                    tuples.append(("InjectionNight", str(parsed["electricity_injection_night"])))
                 if parsed["inverter_power"] > 0:
-                    data["KnowsInverterPower"] = "true"
+                    tuples.append(("KnowsInverterPower", "true"))
                     # Config stores inverter_power in W; vtest.be expects kW with comma decimal
                     inverter_kw = parsed["inverter_power"] / 1000.0
-                    data["InverterPower"] = f"{inverter_kw:.2f}".replace(".", ",")
+                    tuples.append(("InverterPower", f"{inverter_kw:.2f}".replace(".", ",")))
 
-        if gas_comp:
-            data["EnergyTypeGas"] = "true"
-            data["UsageGas"] = str(parsed["gas_consumption"])
-            data["GasMeterUnit"] = "1"  # kWh
+        if parsed["gas_comp"]:
+            tuples.append(("EnergyTypeGas", "true"))
+            tuples.append(("UsageGas", str(parsed["gas_consumption"])))
+            tuples.append(("GasMeterUnit", "1"))  # kWh
 
-        return data
+        return tuples
 
     def _parse_all_results(self, soup: BeautifulSoup, parsed_config: dict) -> dict:
-        """Return {contract_code: {section_name: [best_match]}} for all contract types."""
+        """Return {contract_code: {section_name: [best_match]}} for all contract types.
+
+        vtest.be result cards use .resultitem divs with CSS classes ct-ELECTRICITY / ct-GAS
+        and a data-tarifftype attribute ("FIXED" or "VARIABLE"). The annual price in € is
+        stored in the data-price attribute (European comma-decimal format).
+        """
         electricity_comp = parsed_config["electricity_comp"]
         gas_comp = parsed_config["gas_comp"]
         day_cons = parsed_config["day_electricity_consumption"]
@@ -542,78 +536,38 @@ class VtestSession(object):
         gas_cons = parsed_config["gas_consumption"]
         yearly_elec = day_cons + night_cons + excl_night_cons
 
-        # Collect all potential result cards from the page
-        cards = soup.select("article")
-        if not cards:
-            cards = soup.select(
-                "[class*='c-result-card'], [class*='result-card'], [class*='contract-card']"
-            )
-        if not cards:
-            # Generic fallback: any div that looks like a card with a price
-            candidates = soup.find_all("div", class_=re.compile(r"card", re.I))
-            cards = [c for c in candidates if re.search(r"€", c.get_text())]
+        _LOGGER.debug(
+            "VTest: Total .resultitem elements: %d",
+            len(soup.select(".resultitem")),
+        )
 
-        _LOGGER.debug("VTest: %d potential result cards found", len(cards))
+        FUEL_CLASS = {
+            FuelType.ELECTRICITY: "ct-ELECTRICITY",
+            FuelType.GAS: "ct-GAS",
+        }
 
-        # For each (fuel_type, contract_type) combination find cheapest card
+        def _annual_price(item) -> float:
+            raw = item.get("data-price", "").replace(".", "").replace(",", ".")
+            try:
+                return float(raw)
+            except ValueError:
+                return float("inf")
+
         def _best_for(fuel_type: "FuelType", contract_type: "ContractType", yearly_consumption: int) -> dict:
-            is_fixed = contract_type == ContractType.FIXED
+            fuel_cls = FUEL_CLASS.get(fuel_type, "")
+            tariff_attr = "FIXED" if contract_type == ContractType.FIXED else "VARIABLE"
             section_name = fuel_type.fullnameNL
 
-            FIXED_KEYWORDS = ("vast", "vaste", "fixed", "langetermijn")
-            VARIABLE_KEYWORDS = ("variabel", "variable", "flex", "dynamisch", "dynamic")
-            ELECTRICITY_KEYWORDS = ("elektr", "stroom")
-            GAS_KEYWORDS = ("gas",)
+            items = [
+                el for el in soup.select(f".resultitem.{fuel_cls}")
+                if el.get("data-tarifftype") == tariff_attr
+            ]
+            _LOGGER.debug(
+                "VTest: %d .resultitem.%s[data-tarifftype=%s] found",
+                len(items), fuel_cls, tariff_attr,
+            )
 
-            best_value = None
-            best_card = None
-
-            for card in cards:
-                raw_text = card.get_text(" ", strip=True)
-                card_lower = raw_text.lower()
-
-                # Filter by fuel type when both electricity and gas are requested
-                if electricity_comp and gas_comp:
-                    if fuel_type == FuelType.ELECTRICITY and not any(kw in card_lower for kw in ELECTRICITY_KEYWORDS):
-                        continue
-                    if fuel_type == FuelType.GAS and not any(kw in card_lower for kw in GAS_KEYWORDS):
-                        continue
-
-                # Filter by contract type when keywords are present
-                has_fixed_kw = any(kw in card_lower for kw in FIXED_KEYWORDS)
-                has_variable_kw = any(kw in card_lower for kw in VARIABLE_KEYWORDS)
-                if has_fixed_kw or has_variable_kw:
-                    if is_fixed and has_variable_kw and not has_fixed_kw:
-                        continue
-                    if not is_fixed and has_fixed_kw and not has_variable_kw:
-                        continue
-
-                # Extract annual cost from card text
-                annual_value = None
-                annual_match = re.search(r"€\s*([0-9\.,]+)\s*/\s*jaar", raw_text, re.IGNORECASE)
-                if annual_match:
-                    annual_value = _extract_euro_value(annual_match.group(0))
-                if annual_value is None:
-                    # Try reversed pattern: "1.234,56 € / jaar" or similar
-                    alt_match = re.search(r"([0-9][0-9\.,]+)\s*€\s*/\s*jaar", raw_text, re.IGNORECASE)
-                    if alt_match:
-                        annual_value = _extract_euro_value("€ " + alt_match.group(1))
-                if annual_value is None:
-                    # Try "Jaarlijks" label near a euro amount
-                    jaarlijks_match = re.search(
-                        r"jaarlijk[^\n€]{0,50}€\s*([0-9\.,]+)", raw_text, re.IGNORECASE
-                    )
-                    if jaarlijks_match:
-                        annual_value = _extract_euro_value("€ " + jaarlijks_match.group(1))
-
-                if not annual_value or annual_value <= 0:
-                    continue
-
-                if best_value is None or annual_value < best_value:
-                    best_value = annual_value
-                    best_card = card
-
-            if best_value is None or best_card is None:
+            if not items:
                 _LOGGER.debug(
                     "VTest: No %s %s contract found in results",
                     fuel_type.fullnameEN,
@@ -621,13 +575,15 @@ class VtestSession(object):
                 )
                 return {}
 
-            raw_text = best_card.get_text(" ", strip=True)
+            best = min(items, key=_annual_price)
+            annual_price = _annual_price(best)
 
-            provider_img = best_card.find("img")
-            provider_name = _normalize_provider_name(provider_img.get("alt", "") if provider_img else "")
-
-            name_el = best_card.find(["h2", "h3", "h4"])
-            contract_name = name_el.get_text(" ", strip=True) if name_el else ""
+            provider_el = best.find("span", {"id": "supplier-name"})
+            provider_name = _normalize_provider_name(
+                provider_el.get_text(strip=True) if provider_el else ""
+            )
+            contract_el = best.find("h4", class_="productNameStyle")
+            contract_name = contract_el.get_text(" ", strip=True) if contract_el else ""
 
             json_data: dict = {
                 "name": contract_name,
@@ -635,22 +591,15 @@ class VtestSession(object):
                 "provider": provider_name,
             }
 
-            # Try to extract monthly cost
-            monthly_match = re.search(r"€\s*([0-9\.,]+)\s*/\s*maand", raw_text, re.IGNORECASE)
-            if monthly_match:
-                monthly_value = _extract_euro_value(monthly_match.group(0))
-                if monthly_value:
-                    json_data["Maandelijkse kostprijs"] = [f"€ {monthly_value:.2f}/maand"]
-
-            if yearly_consumption > 0:
-                cents_per_kwh = (best_value / yearly_consumption) * 100
+            if yearly_consumption > 0 and annual_price < float("inf"):
+                cents_per_kwh = (annual_price / yearly_consumption) * 100
                 json_data["Jaarlijkse kostprijs"] = [
                     f"{cents_per_kwh:.2f}".replace(".", ",") + " c€/kWh",
                     f"{yearly_consumption} kWh/jaar",
-                    f"€ {best_value:.2f}/jaar",
+                    f"€ {annual_price:.2f}/jaar",
                 ]
-            else:
-                json_data["Jaarlijkse kostprijs"] = [f"€ {best_value:.2f}/jaar"]
+            elif annual_price < float("inf"):
+                json_data["Jaarlijkse kostprijs"] = [f"€ {annual_price:.2f}/jaar"]
 
             return {section_name: [json_data]}
 
@@ -703,7 +652,7 @@ class VtestSession(object):
                 return {}
 
         csrf_token = self._extract_csrf_token(html)
-        form_data = self._build_form_data(parsed, location_id, csrf_token)
+        form_tuples = self._build_form_data(html, parsed, location_id)
 
         _LOGGER.debug(
             "VTest: Submitting form for postal code %s (location_id=%s)", postalcode, location_id
@@ -711,8 +660,8 @@ class VtestSession(object):
         try:
             response = self.s.post(
                 self.VTEST_URL,
-                data=form_data,
-                timeout=30,
+                data=form_tuples,
+                timeout=60,
                 allow_redirects=True,
             )
             response.raise_for_status()
