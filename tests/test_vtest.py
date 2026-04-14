@@ -526,6 +526,11 @@ async def test_vtest_sensor_state_computed_from_price_info(hass):
         ContractType.VARIABLE.code: {},
     }
 
+    async def _noop_update():
+        pass
+
+    data.update = _noop_update
+
     sensor = VtestSensor(data, "9000", FuelType.ELECTRICITY, ContractType.FIXED)
     await sensor.async_update()
 
@@ -545,6 +550,11 @@ async def test_vtest_sensor_state_none_when_no_data(hass):
         ContractType.FIXED.code: {},
         ContractType.VARIABLE.code: {},
     }
+
+    async def _noop_update():
+        pass
+
+    data.update = _noop_update
 
     sensor = VtestSensor(data, "9000", FuelType.ELECTRICITY, ContractType.FIXED)
     await sensor.async_update()
@@ -570,6 +580,11 @@ async def test_vtest_sensor_attributes_contain_required_keys(hass):
         },
         ContractType.VARIABLE.code: {},
     }
+
+    async def _noop_update():
+        pass
+
+    data.update = _noop_update
 
     sensor = VtestSensor(data, "9000", FuelType.ELECTRICITY, ContractType.FIXED)
     await sensor.async_update()

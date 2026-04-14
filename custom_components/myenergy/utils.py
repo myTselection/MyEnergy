@@ -503,7 +503,7 @@ class VtestSession(object):
                 data["HasSolarPanels"] = "true"
                 if parsed["electricity_injection"] > 0:
                     data["InjectionDay"] = str(parsed["electricity_injection"])
-                if has_night and parsed["electricity_injection_night"] > 0:
+                if (has_night or has_excl_night) and parsed["electricity_injection_night"] > 0:
                     data["InjectionNight"] = str(parsed["electricity_injection_night"])
                 if parsed["inverter_power"] > 0:
                     data["KnowsInverterPower"] = "true"
@@ -694,13 +694,17 @@ class VtestSession(object):
         _LOGGER.debug(
             "VTest: Submitting form for postal code %s (location_id=%s)", postalcode, location_id
         )
-        response = self.s.post(
-            self.VTEST_URL,
-            data=form_data,
-            timeout=30,
-            allow_redirects=True,
-        )
-        response.raise_for_status()
+        try:
+            response = self.s.post(
+                self.VTEST_URL,
+                data=form_data,
+                timeout=30,
+                allow_redirects=True,
+            )
+            response.raise_for_status()
+        except requests.RequestException as e:
+            _LOGGER.warning("VTest: HTTP error submitting form: %s", str(e))
+            return {}
         _LOGGER.debug("VTest: Response status %s, url=%s", response.status_code, response.url)
 
         soup = BeautifulSoup(response.text, "html.parser")

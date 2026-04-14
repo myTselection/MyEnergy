@@ -86,6 +86,16 @@ async def dry_setup(hass, config_entry, async_add_devices):
         sensorElecVariable = ComponentSensor(componentData, postalcode, FuelType.ELECTRICITY,ContractType.VARIABLE)
         sensors.append(sensorElecVariable)
 
+    if config.get("vtest_enabled", False):
+        vtestData = VtestData(config, hass)
+        await vtestData._forced_update()
+        if electricity_comp:
+            sensors.append(VtestSensor(vtestData, postalcode, FuelType.ELECTRICITY, ContractType.FIXED))
+            sensors.append(VtestSensor(vtestData, postalcode, FuelType.ELECTRICITY, ContractType.VARIABLE))
+        if gas_comp:
+            sensors.append(VtestSensor(vtestData, postalcode, FuelType.GAS, ContractType.FIXED))
+            sensors.append(VtestSensor(vtestData, postalcode, FuelType.GAS, ContractType.VARIABLE))
+
     async_add_devices(sensors)
 
 
@@ -435,30 +445,29 @@ class VtestData:
         parsed_any_contract = False
 
         for contract_type in ContractType:
-            if self._session:
-                _LOGGER.debug("VTest: Getting data for contract type %s", contract_type.code)
-                try:
-                    contract_details = await self._hass.async_add_executor_job(
-                        lambda ct=contract_type: self._session.get_data(self._config, ct)
-                    )
-                    if contract_details is None:
-                        contract_details = {}
+            _LOGGER.debug("VTest: Getting data for contract type %s", contract_type.code)
+            try:
+                contract_details = await self._hass.async_add_executor_job(
+                    lambda ct=contract_type: self._session.get_data(self._config, ct)
+                )
+                if contract_details is None:
+                    contract_details = {}
 
-                    self._details[contract_type.code] = contract_details
+                self._details[contract_type.code] = contract_details
 
-                    if contract_details:
-                        parsed_any_contract = True
-                        self._refresh_retry = 0
-                        self._refresh_required = False
-                    else:
-                        empty_contracts.append(contract_type.code)
-                        self._refresh_required = True
-                except Exception as e:
-                    _LOGGER.warning("VTest: Exception fetching data, will retry: %s", str(e), exc_info=True)
-                    self._details[contract_type.code] = self._details.get(contract_type.code, {})
+                if contract_details:
+                    parsed_any_contract = True
+                    self._refresh_retry = 0
+                    self._refresh_required = False
+                else:
                     empty_contracts.append(contract_type.code)
                     self._refresh_required = True
-                _LOGGER.debug("VTest: Data fetch complete for %s", contract_type.code)
+            except Exception as e:
+                _LOGGER.warning("VTest: Exception fetching data, will retry: %s", str(e), exc_info=True)
+                self._details[contract_type.code] = self._details.get(contract_type.code, {})
+                empty_contracts.append(contract_type.code)
+                self._refresh_required = True
+            _LOGGER.debug("VTest: Data fetch complete for %s", contract_type.code)
 
         if empty_contracts and not parsed_any_contract:
             _LOGGER.warning("VTest: No data parsed for contract types %s", ",".join(empty_contracts))
@@ -556,8 +565,7 @@ class VtestSensor(Entity):
                 self._promo = self._providerdetails.get(headings[2], "")
                 price_info = self._providerdetails.get("Jaarlijkse kostprijs", [])
                 if len(price_info) > 0:
-                    raw_price = price_info[0]
-                    raw_price = raw_price.replace("câ‚¬/kWh", "").replace("c€/kWh", "").strip()
+                    raw_price = price_info[0].replace("c€/kWh", "").strip()
                     if "," in raw_price and "." in raw_price:
                         raw_price = raw_price.replace(".", "").replace(",", ".")
                     elif "," in raw_price:
@@ -565,7 +573,7 @@ class VtestSensor(Entity):
                     self._price = float(raw_price) / 100
                     if len(price_info) >= 3:
                         self._kWhyear = price_info[1]
-                        self._priceyear = price_info[2].replace("câ‚¬/kWh", "").replace("c€/kWh", "")
+                        self._priceyear = price_info[2]
 
     async def async_will_remove_from_hass(self):
         _LOGGER.info("async_will_remove_from_hass VTest")
@@ -613,10 +621,6 @@ class VtestSensor(Entity):
             manufacturer="VTest (VREG)",
             configuration_url="https://www.vtest.be/",
         )
-
-    @property
-    def unit(self) -> int:
-        return int
 
     @property
     def unit_of_measurement(self) -> str:
