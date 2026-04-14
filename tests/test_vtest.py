@@ -425,20 +425,26 @@ def test_get_data_location_id_cached_avoids_repeated_extraction():
 
     # Warm up with first call
     session.get_data(BASE_CONFIG, ContractType.FIXED)
-    # Corrupt the main page so extraction would fail if re-attempted
-    session.s.__class__ = type(
-        "_BrokenGet",
-        (),
-        {
-            "update": lambda self, d: None,
-            "get": lambda self, url, **kw: (_ for _ in ()).throw(AssertionError("should not re-fetch main page")),
-            "post": lambda self, url, **kw: type("R", (), {"text": RESULTS_HTML_ELEC_ONLY, "status_code": 200, "url": VtestSession.VTEST_URL, "raise_for_status": lambda self: None})(),
-            "_get_calls": 0,
-            "_post_calls": session.s._post_calls,
-        },
-    )
+    assert "9000" in session._location_id_cache
 
-    # The LocationId should still be in _location_id_cache from the first call
+    # Replace _extract_location_id with a sentinel that would fail if called
+    extraction_calls = {"n": 0}
+
+    def _should_not_extract(html, postalcode):
+        extraction_calls["n"] += 1
+        raise AssertionError("_extract_location_id should not be called again")
+
+    session._extract_location_id = _should_not_extract
+
+    # Expire the results cache so a full round-trip is attempted (GET + POST),
+    # but _extract_location_id must NOT be called since location_id is cached.
+    old_key, _, old_data = session._results_cache
+    session._results_cache = (old_key, datetime.now() - timedelta(hours=2), old_data)
+
+    result = session.get_data(BASE_CONFIG, ContractType.FIXED)
+
+    assert isinstance(result, dict)
+    assert extraction_calls["n"] == 0
     assert "9000" in session._location_id_cache
 
 
