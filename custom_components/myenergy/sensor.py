@@ -87,7 +87,7 @@ async def dry_setup(hass, config_entry, async_add_devices):
         sensorElecVariable = ComponentSensor(componentData, postalcode, FuelType.ELECTRICITY,ContractType.VARIABLE)
         sensors.append(sensorElecVariable)
 
-    if config.get("vtest_enabled", False):
+    if config.get("vtest_enabled", False) and (electricity_comp or gas_comp):
         vtestData = VtestData(config, hass)
         await vtestData._forced_update()
         if electricity_comp:
