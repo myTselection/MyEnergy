@@ -477,14 +477,21 @@ class VtestData:
         await self._forced_update()
 
     async def update(self):
-        if (
-            (self._details is None or self._details == {} or self._refresh_required)
-            and self._refresh_retry < 5
-        ):
-            await self._forced_update()
-        else:
-            await self._update()
+        needs_forced_refresh = (
+            self._details is None or self._details == {} or self._refresh_required
+        )
 
+        if needs_forced_refresh:
+            if self._refresh_retry < 5:
+                await self._forced_update()
+            else:
+                _LOGGER.warning(
+                    "VTest: Refresh retry limit reached (%s), skipping forced update",
+                    self._refresh_retry,
+                )
+            return
+
+        await self._update()
     def clear_session(self):
         self._session = None
 
