@@ -6,65 +6,76 @@
 [![GitHub last commit](https://img.shields.io/github/last-commit/myTselection/MyEnergy.svg)](https://github.com/myTselection/MyEnergy/commits/master)
 [![GitHub commit activity](https://img.shields.io/github/commit-activity/m/myTselection/MyEnergy.svg)](https://github.com/myTselection/MyEnergy/graphs/commit-activity)
 
-# :warning: STATUS: Currently BROKEN and not working. This integration is not (yet) compatible with the new website of mijnenergie.be.
+# :warning: STATUS: Experimental support for the new mijnenergie.be website
 
 # My Energy - MijnEnergie.be Home Assistant integration
+
 [Mijn Energie](https://www.mijnenergie.be/) Home Assistant custom component integration for Belgium. This custom component has been built from the ground up to bring MijnEnergie.be site data into Home Assistant sensors in order to follow up the cheapest energy electricty and gas prices. This integration is built against the public website provided by MijnEnergie.be for Belgium and has not been tested for any other countries.
 
-This integration is in no way affiliated with MijnEnergie. 
+This integration is in no way affiliated with MijnEnergie.
 
 | :warning: Please don't report issues with this integration to MijnEnergie.be, they will not be able to support you. |
-| --------------------------------------------------------------------------------------------------------------------|
+| ------------------------------------------------------------------------------------------------------------------- |
 
 For local gas station fuel prices and mazout, please check out my other custom integration [Carbu.com](https://github.com/myTselection/Carbu_com)
 
 <p align="center"><img src="https://raw.githubusercontent.com/myTselection/MyEnergy/master/icon.png"/></p>
 
-
 ## Installation
+
 - [HACS](https://hacs.xyz/): add url https://github.com/myTselection/MyEnergy as custom repository (HACS > Integration > option: Custom Repositories)
-	- [![Open your Home Assistant instance and open the repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg?style=flat-square)](https://my.home-assistant.io/redirect/hacs_repository/?owner=myTselection&repository=MyEnergy&category=integration)
+  - [![Open your Home Assistant instance and open the repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg?style=flat-square)](https://my.home-assistant.io/redirect/hacs_repository/?owner=myTselection&repository=MyEnergy&category=integration)
 
 - Restart Home Assistant
 - Add 'MyEnergy' integration via HA Settings > 'Devices and Services' > 'Integrations'
 
-
-
 ## Integration
+
 Device `MyEnergy` should become available with the following sensors:
+
 - <details><summary><code>MyEnergy [postalcode] [FuelType] [ContractType]</code> with details on cheapest market energy rate that can be available to you (if you'd change contract), taking into account your configured criteria</summary>
 
+  | Attribute            | Description                                                                                                                                                                                                                                                                             |
+  | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | State                | cost in € per kWh                                                                                                                                                                                                                                                                       |
+  | Last update          | Timestamp of last data refresh, throttled to limit data fetch to 1h                                                                                                                                                                                                                     |
+  | Postalcode           | Postalcode used to retrieve the prices                                                                                                                                                                                                                                                  |
+  | Fuel type            | Fuel type (Electricity or Gas) used to retrieve the prices                                                                                                                                                                                                                              |
+  | Contract type        | Contract type (Fixed or Variable) used to retrieve the prices                                                                                                                                                                                                                           |
+  | Url                  | Full url that was used to retrieve the data, throught this url, full details can be seen and contract can be requested                                                                                                                                                                  |
+  | Provider Name        | Name of the provider of the cheapest subscription for which a match was found                                                                                                                                                                                                           |
+  | Contract Name        | Name of the cheapest subscription for which a match was found                                                                                                                                                                                                                           |
+  | Energycost           | Energycost (provider dependent part of subscription cost) of the cheapest subscription for which a match was found                                                                                                                                                                      |
+  | Netrate              | Netrate (fixed part of subscription cost) of the cheapest subscription for which a match was found                                                                                                                                                                                      |
+  | Promo                | Promo (provider dependent promotion, part of subscription cost) of the cheapest subscription for which a match was found                                                                                                                                                                |
+  | Total price per year | Total price per year of the cheapest subscription for which a match was found                                                                                                                                                                                                           |
+  | Total kWh per year   | Total kWh per year on wich the lookup is based (total combination of day/night/... consumptions)                                                                                                                                                                                        |
+  | fulldetail           | If configuration option to add product and price detail json is enabled, all site data will be added as a json to enable fetching extra contract specific data. Example to fetch data out of it `{{state_attr('sensor.myenergy_1190_electricity_fixed','fulldetail')[0].Dagtarief[0]}}` |
+  | input profile        | Parsed GUI input profile (postal code, consumption, meter and provider preferences) used for each sensor entity; available for automations and templates |
 
-	| Attribute | Description |
-	| --------- | ----------- |
-	| State     | cost in € per kWh  |
-	| Last update   | Timestamp of last data refresh, throttled to limit data fetch to 1h |
-	| Postalcode    | Postalcode used to retrieve the prices |
-	| Fuel type     | Fuel type (Electricity or Gas) used to retrieve the prices |
-	| Contract type | Contract type (Fixed or Variable) used to retrieve the prices |
-	| Url           | Full url that was used to retrieve the data, throught this url, full details can be seen and contract can be requested |
- 	| Provider Name | Name of the provider of the cheapest subscription for which a match was found |
-	| Contract Name | Name of the cheapest subscription for which a match was found |
-	| Energycost    | Energycost (provider dependent part of subscription cost) of the cheapest subscription for which a match was found |
-	| Netrate       | Netrate  (fixed part of subscription cost) of the cheapest subscription for which a match was found |
-	| Promo         | Promo (provider dependent promotion, part of subscription cost) of the cheapest subscription for which a match was found |
-	| Total price per year    | Total price per year of the cheapest subscription for which a match was found |
-	| Total kWh per year      | Total kWh per year on wich the lookup is based (total combination of day/night/... consumptions) |
-  | fulldetail | If configuration option to add product and price detail json is enabled, all site data will be added as a json to enable fetching extra contract specific data. Example to fetch data out of it `{{state_attr('sensor.myenergy_1190_electricity_fixed','fulldetail')[0].Dagtarief[0]}}` |
-	
 </details>
 
+### Updated website compatibility note
+
+The integration now runs fully from the GUI input values (postal code, consumption profile, meter and provider preferences), then queries MijnEnergie and parses the returned offers.
+
+The parsed GUI input profile is also exposed in the sensor attributes (`input profile`) so automations and templates can inspect the exact scenario used for each created sensor entity.
+
 ## Status
+
 Still some optimisations are planned, see [Issues](https://github.com/myTselection/MyEnergy/issues) section in GitHub.
 
 ## Technical pointers
+
 The main logic and API connection related code can be found within source code MyEnergy/custom_components/MyEnery:
+
 - [sensor.py](https://github.com/myTselection/MyEnergy/blob/master/custom_components/myenergy/sensor.py)
 - [utils.py](https://github.com/myTselection/MyEnergy/blob/master/custom_components/myenergy/utils.py) -> mainly ComponentSession class
 
 All other files just contain boilerplat code for the integration to work wtihin HA or to have some constants/strings/translations.
 
 If you would encounter some issues with this custom component, you can enable extra debug logging by adding below into your `configuration.yaml`:
+
 <details><summary>Click to show example</summary>
 	
 ```
@@ -76,8 +87,10 @@ logger:
 </details>
 
 ## Statistics
+
 In order to keep long term statistics, you could create statistics sensors such as example below (I'm still experimenting with best config):
 in `configuration.yaml`:
+
 <details><summary>Click to show example</summary>
 	
 ```
@@ -114,11 +127,13 @@ sensor:
 </details>
 
 ### Statistics Graph
+
 Based on these statistics sensors that will become available after HA rebooted, you can add a Statistics Graph.
+
 <details><summary>Click to show example</summary>
 
-
 Dashboard:
+
 ```
       - chart_type: line
         period: month
@@ -134,4 +149,5 @@ Dashboard:
           - max
         title: Mijn Energie
 ```
+
 </details>

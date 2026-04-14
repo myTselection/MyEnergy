@@ -131,6 +131,7 @@ def calculate_days_remaining(target_date):
 class ComponentData:
     def __init__(self, config, hass):
         self._config = config
+        self._parsed_inputs = normalize_input_config(config)
         self._hass = hass
         self._session = ComponentSession()
         self._postalcode = config.get("postalcode")
@@ -149,6 +150,7 @@ class ComponentData:
         self._last_update = None
         self._refresh_required = True
         self._refresh_retry = 0
+        self._comparison_unavailable_logged = False
 
     @property
     def unique_id(self):
@@ -166,20 +168,63 @@ class ComponentData:
             self._session = ComponentSession()
         
         self._last_update = datetime.now()
+        empty_contracts = []
+        parsed_any_contract = False
+        comparison_unavailable_message = None
         for contract_type in ContractType:
             if self._session:
                 _LOGGER.debug("Getting data for " + NAME)
                 try:
-                    self._details[contract_type.code] = await self._hass.async_add_executor_job(lambda: self._session.get_data(self._config, contract_type))
-                    self._refresh_retry = 0
+                    contract_details = await self._hass.async_add_executor_job(
+                        lambda: self._session.get_data(self._config, contract_type)
+                    )
+                    if contract_details is None:
+                        contract_details = {}
+
+                    # Always keep per-contract key to avoid noisy "missing contract" warnings downstream.
+                    self._details[contract_type.code] = contract_details
+
+                    if contract_details:
+                        parsed_any_contract = True
+                        self._refresh_retry = 0
+                        self._refresh_required = False
+                    else:
+                        empty_contracts.append(contract_type.code)
+                        self._refresh_required = True
+                except ComparisonUnavailableError as e:
+                    comparison_unavailable_message = str(e)
+                    self._details[contract_type.code] = {}
                     self._refresh_required = False
+                    self._refresh_retry = 5
+                    if not self._comparison_unavailable_logged:
+                        _LOGGER.warning(
+                            "%s %s",
+                            NAME,
+                            comparison_unavailable_message,
+                        )
+                        self._comparison_unavailable_logged = True
+                    # Prepopulate remaining contract keys so downstream sensors
+                    # don't hit the "not found" warning path.
+                    for ct in ContractType:
+                        if ct.code not in self._details:
+                            self._details[ct.code] = {}
+                    break
                 except Exception as e:
                     # Log the exception details
                     _LOGGER.warning(f"An exception occurred, will retry: {str(e)}", exc_info=True)
+                    self._details[contract_type.code] = self._details.get(contract_type.code, {})
+                    empty_contracts.append(contract_type.code)
                     self._refresh_required = True
                 _LOGGER.debug("Data fetched completed " + NAME)
             else:
                 _LOGGER.debug(f"{NAME} no session available")
+
+        if not comparison_unavailable_message and empty_contracts and not parsed_any_contract:
+            _LOGGER.warning(
+                "%s no data parsed for contract types %s",
+                NAME,
+                ",".join(empty_contracts),
+            )
 
     @Throttle(MIN_TIME_BETWEEN_UPDATES)
     async def _update(self):
@@ -216,6 +261,7 @@ class ComponentSensor(Entity):
         self._promo = None
         self._name = f"{NAME} {self._postalcode}"
         self._add_details = data._add_details
+        self._input_profile = data._parsed_inputs
 
     @property
     def state(self):
@@ -226,12 +272,27 @@ class ComponentSensor(Entity):
         await self._data.update()
         self._details = self._data._details        
         self._add_details = self._data._add_details
+        self._input_profile = self._data._parsed_inputs
         self._last_update =  self._data._last_update
         self._name = f"{NAME} {self._postalcode} {self._fuel_type.fullnameEN} {self._contract_type.fullname}"
         self._contract_type_details = self._details.get(self._contract_type.code)
         # _LOGGER.debug(f"self._contract_type_details: {self._contract_type_details}")
         if self._contract_type_details == None:
             _LOGGER.warning(f"{NAME} requested contract type {self._contract_type.code} not found, available data: {self._details}")
+            return
+        if not self._contract_type_details:
+            _LOGGER.debug("%s no parsed entries for contract type %s", NAME, self._contract_type.code)
+            self._price = None
+            self._priceyear = None
+            self._kWhyear = None
+            self._url = None
+            self._providername = None
+            self._contractname = None
+            self._energycost = None
+            self._netrate = None
+            self._promo = None
+            self._fueltype_detail = None
+            self._providerdetails = None
             return
         for fueltype_name in self._contract_type_details.keys():
             if self._fuel_type.fullnameNL in fueltype_name:
@@ -248,9 +309,16 @@ class ComponentSensor(Entity):
                 self._promo = self._providerdetails.get(headings[2],"")
                 price_info = self._providerdetails.get('Jaarlijkse kostprijs',[])
                 if len(price_info) > 0:
-                    self._price = price_info[0]
-                    self._price = self._price.replace('câ‚¬/kWh','').replace('c€/kWh','')
-                    self._price = float(self._price.replace('.','').replace(',', '.'))/100
+                    raw_price = price_info[0]
+                    raw_price = raw_price.replace('câ‚¬/kWh','').replace('c€/kWh','').strip()
+                    if ',' in raw_price and '.' in raw_price:
+                        # European with thousands sep: "1.032,87"
+                        raw_price = raw_price.replace('.', '').replace(',', '.')
+                    elif ',' in raw_price:
+                        # European decimal only: "32,87"
+                        raw_price = raw_price.replace(',', '.')
+                    # else standard dot-decimal: "32.87"
+                    self._price = float(raw_price) / 100
                     if len(price_info) >= 2:
                         self._kWhyear = price_info[1]
                         self._priceyear = price_info[2]
@@ -297,6 +365,7 @@ class ComponentSensor(Entity):
             "promo": self._promo,
             "total price per year": self._priceyear,
             "total kWh per year": self._kWhyear,
+            "input profile": self._input_profile,
             "fulldetail": self._fueltype_detail if self._add_details else "details disabled in config"
         }
 
@@ -310,7 +379,8 @@ class ComponentSensor(Entity):
                 (NAME, self._data.unique_id)
             },
             name=self._data.name,
-            manufacturer= NAME
+            manufacturer= NAME,
+            configuration_url="https://www.mijnenergie.be/"
         )
 
     @property

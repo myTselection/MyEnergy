@@ -205,3 +205,8 @@ class ComponentOptionsHandler(config_entries.ConfigFlow):
                 self.config_entry, data=user_input
             )
             return self.async_create_entry(title=NAME, data=user_input)
+        return self.async_show_form(
+            step_id="edit",
+            data_schema=vol.Schema(create_schema(self.config_entry, option=True)),
+            errors=self._errors,
+        )
