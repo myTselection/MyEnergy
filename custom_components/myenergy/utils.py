@@ -3,7 +3,7 @@ import logging
 import re
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
 import urllib.parse
 from enum import Enum
 
@@ -418,6 +418,269 @@ def check_settings(config, hass):
         raise vol.Invalid("Missing settings to setup the sensor.")
     return True
         
+
+class VtestSession(object):
+    """Fetches energy comparison data from vtest.be (VREG official Belgian tool)."""
+
+    VTEST_URL = "https://www.vtest.be/"
+    CACHE_TTL = timedelta(minutes=30)
+
+    def __init__(self):
+        self.s = requests.Session()
+        self.s.headers.update(
+            {
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept-Language": "nl-BE,nl;q=0.9",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Origin": "https://www.vtest.be",
+                "Referer": "https://www.vtest.be/",
+            }
+        )
+        self._location_id_cache: dict = {}
+        # (cache_key, timestamp, {contract_code: parsed_results})
+        self._results_cache: tuple | None = None
+
+    def _fetch_main_page(self) -> str:
+        resp = self.s.get(self.VTEST_URL, timeout=30, allow_redirects=True)
+        resp.raise_for_status()
+        return resp.text
+
+    def _extract_location_id(self, html: str, postalcode: str) -> str | None:
+        """Return the LocationId value for the first matching postalcode entry."""
+        soup = BeautifulSoup(html, "html.parser")
+        select = soup.find("select", {"id": "PostalCode"})
+        if not select:
+            _LOGGER.warning("VTest: PostalCode select not found in page HTML")
+            return None
+        postalcode_str = str(postalcode).strip()
+        for option in select.find_all("option"):
+            val = option.get("value", "").strip()
+            if not val:
+                continue
+            text = option.get_text(strip=True)
+            # Option text format: "9000 - Gent"
+            if text.startswith(postalcode_str + " - ") or text.startswith(postalcode_str + "-"):
+                return val
+        _LOGGER.warning("VTest: No LocationId found for postalcode %s", postalcode)
+        return None
+
+    def _extract_csrf_token(self, html: str) -> str:
+        soup = BeautifulSoup(html, "html.parser")
+        token_el = soup.find("input", {"name": "__RequestVerificationToken"})
+        return token_el.get("value", "") if token_el else ""
+
+    def _build_form_data(self, html: str, parsed: dict, location_id: str) -> list:
+        """Return list of (name, value) tuples for the vtest.be form POST.
+
+        Extracts all HTML form inputs first (preserving ASP.NET checkbox+hidden bool pairs),
+        then appends our overrides. The tuple list approach is required because ASP.NET model
+        binding for booleans inspects the first "true" value; dict collapses duplicate keys.
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        form = soup.find("form")
+        tuples: list = []
+        if form:
+            for inp in form.find_all("input"):
+                name = inp.get("name")
+                if name:
+                    tuples.append((name, inp.get("value", "")))
+
+        # Append overrides; these come after existing values and take effect for ASP.NET binding
+        tuples.append(("PostalCode", location_id))
+        tuples.append(("LocationId", location_id))
+        tuples.append(("UserConsumption", "2"))  # "Ik ken mijn verbruik"
+
+        if parsed["electricity_comp"]:
+            tuples.append(("EnergyTypeElectricity", "true"))
+            tuples.append(("UsageDay", str(parsed["day_electricity_consumption"])))
+            has_night = parsed["night_electricity_consumption"] > 0
+            has_excl_night = parsed["excl_night_electricity_consumption"] > 0
+            tuples.append(("HasNightMeter", "true" if has_night else "false"))
+            if has_night:
+                tuples.append(("UsageNight", str(parsed["night_electricity_consumption"])))
+            if has_excl_night:
+                tuples.append(("HasExclusiveNight", "true"))
+                tuples.append(("UsageExclusiveNight", str(parsed["excl_night_electricity_consumption"])))
+            tuples.append(("HasDigitalMeter", "true" if parsed["electricity_digital_counter"] else "false"))
+            if parsed["solar_panels"]:
+                tuples.append(("HasSolarPanels", "true"))
+                if parsed["electricity_injection"] > 0:
+                    tuples.append(("InjectionDay", str(parsed["electricity_injection"])))
+                if parsed["electricity_injection_night"] > 0:
+                    tuples.append(("InjectionNight", str(parsed["electricity_injection_night"])))
+                if parsed["inverter_power"] > 0:
+                    tuples.append(("KnowsInverterPower", "true"))
+                    # inverter_power is already in kW (user enters e.g. 3.5); vtest.be uses comma decimal
+                    tuples.append(("InverterPower", f"{parsed['inverter_power']:.2f}".replace(".", ",")))
+
+        if parsed["gas_comp"]:
+            tuples.append(("EnergyTypeGas", "true"))
+            tuples.append(("UsageGas", str(parsed["gas_consumption"])))
+            tuples.append(("GasMeterUnit", "1"))  # kWh
+
+        return tuples
+
+    def _parse_all_results(self, soup: BeautifulSoup, parsed_config: dict) -> dict:
+        """Return {contract_code: {section_name: [best_match]}} for all contract types.
+
+        vtest.be result cards use .resultitem divs with CSS classes ct-ELECTRICITY / ct-GAS
+        and a data-tarifftype attribute ("FIXED" or "VARIABLE"). The annual price in € is
+        stored in the data-price attribute (European comma-decimal format).
+        """
+        electricity_comp = parsed_config["electricity_comp"]
+        gas_comp = parsed_config["gas_comp"]
+        day_cons = parsed_config["day_electricity_consumption"]
+        night_cons = parsed_config["night_electricity_consumption"]
+        excl_night_cons = parsed_config["excl_night_electricity_consumption"]
+        gas_cons = parsed_config["gas_consumption"]
+        yearly_elec = day_cons + night_cons + excl_night_cons
+
+        _LOGGER.debug(
+            "VTest: Total .resultitem elements: %d",
+            len(soup.select(".resultitem")),
+        )
+
+        FUEL_CLASS = {
+            FuelType.ELECTRICITY: "ct-ELECTRICITY",
+            FuelType.GAS: "ct-GAS",
+        }
+
+        def _annual_price(item) -> float:
+            raw = item.get("data-price", "").replace(".", "").replace(",", ".")
+            try:
+                return float(raw)
+            except ValueError:
+                return float("inf")
+
+        def _best_for(fuel_type: "FuelType", contract_type: "ContractType", yearly_consumption: int) -> dict:
+            fuel_cls = FUEL_CLASS.get(fuel_type, "")
+            tariff_attr = "FIXED" if contract_type == ContractType.FIXED else "VARIABLE"
+            section_name = fuel_type.fullnameNL
+
+            items = [
+                el for el in soup.select(f".resultitem.{fuel_cls}")
+                if el.get("data-tarifftype") == tariff_attr
+            ]
+            _LOGGER.debug(
+                "VTest: %d .resultitem.%s[data-tarifftype=%s] found",
+                len(items), fuel_cls, tariff_attr,
+            )
+
+            if not items:
+                _LOGGER.debug(
+                    "VTest: No %s %s contract found in results",
+                    fuel_type.fullnameEN,
+                    contract_type.fullname,
+                )
+                return {}
+
+            best = min(items, key=_annual_price)
+            annual_price = _annual_price(best)
+
+            provider_el = best.find("span", {"id": "supplier-name"})
+            provider_name = _normalize_provider_name(
+                provider_el.get_text(strip=True) if provider_el else ""
+            )
+            contract_el = best.find("h4", class_="productNameStyle")
+            contract_name = contract_el.get_text(" ", strip=True) if contract_el else ""
+
+            json_data: dict = {
+                "name": contract_name,
+                "url": self.VTEST_URL,
+                "provider": provider_name,
+            }
+
+            if yearly_consumption > 0 and annual_price < float("inf"):
+                cents_per_kwh = (annual_price / yearly_consumption) * 100
+                json_data["Jaarlijkse kostprijs"] = [
+                    f"{cents_per_kwh:.2f}".replace(".", ",") + " c€/kWh",
+                    f"{yearly_consumption} kWh/jaar",
+                    f"€ {annual_price:.2f}/jaar",
+                ]
+            elif annual_price < float("inf"):
+                json_data["Jaarlijkse kostprijs"] = [f"€ {annual_price:.2f}/jaar"]
+
+            return {section_name: [json_data]}
+
+        all_results: dict = {}
+        for ct in ContractType:
+            ct_result: dict = {}
+            if electricity_comp:
+                ct_result.update(_best_for(FuelType.ELECTRICITY, ct, yearly_elec))
+            if gas_comp:
+                ct_result.update(_best_for(FuelType.GAS, ct, gas_cons))
+            all_results[ct.code] = ct_result
+
+        return all_results
+
+    def get_data(self, config: dict, contract_type: "ContractType") -> dict:
+        """Fetch vtest.be results and return parsed data for the requested contract type."""
+        parsed = normalize_input_config(config)
+        postalcode = parsed["postalcode"]
+
+        cache_key = (
+            f"{postalcode}"
+            f"_{parsed['electricity_comp']}"
+            f"_{parsed['gas_comp']}"
+            f"_{parsed['day_electricity_consumption']}"
+            f"_{parsed['night_electricity_consumption']}"
+            f"_{parsed['excl_night_electricity_consumption']}"
+            f"_{parsed['gas_consumption']}"
+            f"_{parsed['electricity_digital_counter']}"
+            f"_{parsed['solar_panels']}"
+            f"_{parsed['electricity_injection']}"
+            f"_{parsed['electricity_injection_night']}"
+            f"_{parsed['inverter_power']}"
+        )
+        now = datetime.now()
+
+        if (
+            self._results_cache is not None
+            and self._results_cache[0] == cache_key
+            and (now - self._results_cache[1]) < self.CACHE_TTL
+        ):
+            _LOGGER.debug("VTest: Using cached results for %s", cache_key)
+            return self._results_cache[2].get(contract_type.code, {})
+
+        # Fetch main page for CSRF token and LocationId
+        _LOGGER.debug("VTest: Fetching main page for postal code %s", postalcode)
+        html = self._fetch_main_page()
+
+        location_id = self._location_id_cache.get(postalcode)
+        if location_id is None:
+            location_id = self._extract_location_id(html, postalcode)
+            if location_id:
+                self._location_id_cache[postalcode] = location_id
+            else:
+                _LOGGER.warning("VTest: Cannot resolve LocationId for postal code %s", postalcode)
+                return {}
+
+        form_tuples = self._build_form_data(html, parsed, location_id)
+
+        _LOGGER.debug(
+            "VTest: Submitting form for postal code %s (location_id=%s)", postalcode, location_id
+        )
+        try:
+            response = self.s.post(
+                self.VTEST_URL,
+                data=form_tuples,
+                timeout=60,
+                allow_redirects=True,
+            )
+            response.raise_for_status()
+        except requests.RequestException as e:
+            _LOGGER.warning("VTest: HTTP error submitting form: %s", str(e))
+            return {}
+        _LOGGER.debug("VTest: Response status %s, url=%s", response.status_code, response.url)
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        all_results = self._parse_all_results(soup, parsed)
+
+        self._results_cache = (cache_key, now, all_results)
+        _LOGGER.debug("VTest: Parsed and cached results for %s", cache_key)
+
+        return all_results.get(contract_type.code, {})
+
 
 class ComponentSession(object):
     def __init__(self):
