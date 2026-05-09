@@ -28,6 +28,12 @@ For local gas station fuel prices and mazout, please check out my other custom i
 
 - Restart Home Assistant
 - Add 'MyEnergy' integration via HA Settings > 'Devices and Services' > 'Integrations'
+- Enter the desired consumption details to create a sensor which constantly shows the cheapest contract matching your criteria and location. This will allow you to compare the cheapest market option with your current contract to allow you to know when it's worth switching to another contract.
+- <details><summary>Integration setup screenshots:</summary>
+	<p align="center"><img src="https://raw.githubusercontent.com/myTselection/MyEnergy/master/integration_setup_1.png"/></p>
+	<p align="center"><img src="https://raw.githubusercontent.com/myTselection/MyEnergy/master/integration_setup_2.png"/></p>
+
+</details>
 
 ## Integration
 
